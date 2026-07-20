@@ -28,12 +28,32 @@ export const CODE_SPACE = RADIX ** PAYLOAD_LENGTH;
 
 /**
  * Source of randomness. Defaults to the platform CSPRNG, which exists in both
- * Node 22+ and browsers, keeping this package dependency-free and isomorphic.
+ * Node 20+ and browsers, keeping this package dependency-free and isomorphic.
  */
 export type RandomBytes = (length: number) => Uint8Array;
 
-const defaultRandomBytes: RandomBytes = (length) =>
-  crypto.getRandomValues(new Uint8Array(length));
+/**
+ * Web Crypto, reached through `globalThis` rather than as a bare global.
+ *
+ * This package deliberately depends on neither `@types/node` nor the DOM lib —
+ * it must compile identically for a Node resolver and for a browser bundle.
+ * Naming `crypto` directly would require one or the other, so we describe the
+ * single method we use and resolve it at runtime.
+ */
+const webCrypto = (
+  globalThis as {
+    crypto?: { getRandomValues<T extends ArrayBufferView>(array: T): T };
+  }
+).crypto;
+
+const defaultRandomBytes: RandomBytes = (length) => {
+  if (webCrypto?.getRandomValues === undefined) {
+    throw new Error(
+      'No Web Crypto available. Pass an explicit RandomBytes function to generateCode().',
+    );
+  }
+  return webCrypto.getRandomValues(new Uint8Array(length));
+};
 
 /**
  * Generate a fresh session code.
