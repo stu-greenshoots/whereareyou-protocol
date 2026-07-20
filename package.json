@@ -1,0 +1,28 @@
+{
+  "name": "@whereareyou/protocol",
+  "version": "0.1.0",
+  "description": "Reference codec for the whereareyou location handover protocol — short, checksummed, phonetically-safe location codes for emergency dispatch",
+  "license": "MIT",
+  "author": "Stuart Haigh",
+  "repository": { "type": "git", "url": "git+https://github.com/stu-greenshoots/whereareyou-protocol.git" },
+  "keywords": ["emergency", "location", "geocoding", "dispatch", "what3words", "plus-codes", "protocol"],
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": { ".": { "types": "./dist/index.d.ts", "default": "./dist/index.js" } },
+  "files": ["dist", "README.md", "LICENSE"],
+  "sideEffects": false,
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "prepare": "npm run build",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8",
+    "fast-check": "^3.23.1"
+  },
+  "engines": { "node": ">=20" }
+}
