@@ -163,7 +163,7 @@ npm run build
 
 ## Related
 
-- [`whereareyou-api`](https://github.com/stu-greenshoots/whereareyou-api) — reference resolver node
+- `whereareyou-api` — reference resolver node
 - [`whereareyou-web`](https://github.com/stu-greenshoots/whereareyou-web) — share screen and dispatcher console
 
 ## A note on scope
