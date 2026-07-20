@@ -425,19 +425,46 @@ Patterns established by B2, reuse them:
 `b7-rate-limiting` (implementation complete), `c1-pwa-offline-shell` (icon
 generator only)
 
-### Decisions needed before implementation resumes
+### Decisions taken (2026-07-20)
 
-1. **Merge order** — rebase both dependent branches (§1)
-2. **Publish `@whereareyou/protocol`?** — gates B9 (ADR-003)
-3. **SSE auth mechanism** — gates B6/D5 (§4)
-4. **Redaction** — fix the mechanism, and correct the README either way (§2)
+1. **Merge order — DONE.** Both branches rebased onto their dependencies and
+   force-pushed. `b7-rate-limiting` now sits on `b2-redis-store`;
+   `c1-pwa-offline-shell` on `c7-offline-first-minting`.
+2. **Publish `@whereareyou/protocol` to npm — agreed.** Requires `npm login`
+   first; not yet done. Unblocks B9.
+3. **SSE auth: short-lived single-use stream ticket.** Minted by an
+   authenticated `POST`, exchanged in the query string, ~30s validity. Keeps
+   the long-lived key out of URLs and therefore out of logs.
+4. **Redaction — still outstanding.** Fix the mechanism per ADR-002 and correct
+   the README, which currently asserts a guarantee that does not hold.
+
+### B7 rebase outcome
+
+Four conflicts, all resolved deliberately rather than by picking a side:
+
+- **ADR-001 applied:** `registerRoutes(app, config, store, options)` takes an
+  options object. B2 and B7 each added a positional 4th parameter and B6 needs
+  a third.
+- **One Redis connection, not three.** `SelectedStore` now exposes `redis`, and
+  the limiter borrows it. This is what B2 anticipated when it chose `SCAN` over
+  `DBSIZE`.
+- **`REDIS_URL` documentation merged**, covering both consequences rather than
+  one branch's comment silently replacing the other's.
+- **README keeps both sections.**
+
+Verified on a running server against real Redis: **one** application connection,
+`sess:` and `rl:` prefixes sharing one keyspace, backoff engaging on the sixth
+consecutive miss, `/health` reporting `structuralExpiry: true` and
+`rateLimiting: true`. A session key with a 60s TTL was confirmed gone via
+`redis-cli EXISTS` — **structural expiry is now demonstrably true rather than
+claimed.** 51 tests pass.
 
 ### Ticket status
 
 | Ticket | Status | Note |
 |---|---|---|
-| B7 | 🟡 Built, wrong base | Rebase + `.env.example` + Redis backend tests |
-| B8 | ⬜ Not started | Blocked on redaction fix being scoped in |
-| B9 | 🔴 Blocked | Needs ADR-003 |
-| C1 | 🟡 Started, wrong base | Icons generated but never run |
-| B6/D5 | 🔴 Blocked | Needs SSE auth decision |
+| B7 | 🟢 Rebased, verified | Still needs `.env.example` (13 vars) + Redis backend tests |
+| B8 | ⬜ Not started | Scope in the redaction fix (ADR-002) |
+| B9 | 🟡 Unblocked pending publish | Needs `npm login` then publish |
+| C1 | 🟡 Rebased | Icons now generated; manifest and service worker outstanding |
+| B6/D5 | 🟡 Unblocked | Stream-ticket auth agreed; fix trail removal (§5b) first |
