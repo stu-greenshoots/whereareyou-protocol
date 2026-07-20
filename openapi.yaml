@@ -1,0 +1,763 @@
+openapi: 3.1.0
+
+info:
+  title: whereareyou resolver node
+  version: 0.1.0
+  summary: Ephemeral location handover for emergency dispatch.
+  description: |
+    A resolver node mints and resolves **session codes** — 8-character
+    checksummed codes that point at a short-lived location record.
+
+    A session code is a *pointer*. The position lives in a record on this
+    resolver, which is what lets it expire, follow a moving casualty, carry a
+    note, and be revoked. The cost is that minting and resolving both need a
+    network.
+
+    **Offline codes are not part of this API.** A 10-character offline code is
+    content-addressable: the position is encoded into the code itself. It is
+    produced and consumed entirely by `@whereareyou/protocol` with no server
+    involved, so there is no endpoint for it here and never will be. If you are
+    looking for one, you have misunderstood the design — see `encodeOffline` /
+    `decodeOffline` in the package.
+
+    ## `not-found` is deliberately ambiguous. Do not split it.
+
+    This is the single most important thing in this document, so it is stated
+    here as well as on every response that uses it.
+
+    `404 not-found` covers **four distinct situations**, and the response is
+    byte-for-byte identical in all four:
+
+    1. The code never existed.
+    2. The code existed and has expired.
+    3. The code existed and was revoked by the sharer.
+    4. The code exists, is live, and is claimed by a *different* resolver.
+
+    On `PATCH` and `DELETE` it additionally covers a fifth: the session exists
+    but the supplied `updateToken` is wrong.
+
+    This is not laziness and it is not an unfinished error taxonomy. The
+    session namespace is 32^7 = 34,359,738,368 codes, and each live code maps
+    to "a person in distress, right now, at these coordinates". Enumeration is
+    therefore the central security problem for this protocol, and the entire
+    defence rests on an attacker being unable to tell a *real* code from a
+    *fake* one.
+
+    Every one of `expired`, `revoked` and `claimed-by-another` is an admission
+    that **the guessed code was real**. That admission is worth far more to an
+    attacker than the record itself: it converts a 1-in-34-billion blind search
+    into a confirmed hit that can be retried later, correlated, sold, or used
+    to map how many sessions a deployment is carrying. It is precisely the
+    signal that enumeration defence exists to deny.
+
+    So: if you are implementing a resolver and you find yourself thinking that
+    returning `expired` would be more helpful to the client — it would be, and
+    that is the problem. The client that benefits most from the extra detail is
+    the attacker. The legitimate dispatcher does not need it: they have the
+    caller on the line and can simply ask for the code again. **Do not add
+    `expired`, `revoked`, `gone`, `410`, or a `reason` field. Do not vary the
+    response body, the status code, the headers, or the timing.**
+
+    The one distinction this API *does* draw is between `400 invalid-code` and
+    `404 not-found`, and it is safe because it leaks nothing about the store: a
+    code that fails the checksum is rejected by pure local arithmetic before
+    the datastore is touched at all. The attacker already knows whether their
+    own guess is well-formed; they can compute the checksum themselves. It
+    tells them nothing they did not already know.
+
+    ## Authentication
+
+    Resolving is authenticated in `apikey` mode and unauthenticated in `open`
+    mode. Minting, updating and revoking are never bearer-authenticated —
+    minting is open by design (a person in an emergency must not be blocked by
+    a credential), and update/revoke are authorised by the per-session
+    `updateToken` returned at mint time.
+
+    `open` mode is insecure by construction. See `docs/THREAT-MODEL.md`.
+  license:
+    name: MIT
+    identifier: MIT
+  contact:
+    name: whereareyou
+    url: https://github.com/stu-greenshoots/whereareyou-protocol
+
+servers:
+  - url: http://localhost:8787
+    description: Local reference resolver (`whereareyou-api`)
+
+tags:
+  - name: sessions
+    description: Mint, resolve, update and revoke session codes.
+  - name: operations
+    description: Liveness and deployment posture.
+
+paths:
+  /health:
+    get:
+      tags: [operations]
+      operationId: health
+      summary: Liveness and resolver posture
+      description: |
+        Unauthenticated. Reports which access mode the node is running in, so a
+        console can display an "open mode" warning banner rather than silently
+        talking to an enumerable resolver.
+
+        `liveSessions` is a count only. It is deliberately the *only* aggregate
+        this API exposes, and it is worth knowing that it is a small leak: an
+        attacker who can poll it learns the deployment's live-session count `N`,
+        which is exactly the numerator in the `N / 32^7` per-guess hit rate. It
+        is exposed anyway because operators need it and because it does not
+        help locate any individual code. If that trade is wrong for your
+        deployment, drop the field — no client requires it.
+      security: []
+      responses:
+        '200':
+          description: Node is up.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Health'
+
+  /v1/sessions:
+    post:
+      tags: [sessions]
+      operationId: createSession
+      summary: Mint a session code
+      description: |
+        Unauthenticated by design. The caller is a member of the public in an
+        emergency; requiring a credential here would be a worse failure than
+        absorbing some abuse. Mint rate limits, when present, should be
+        deliberately loose for the same reason.
+
+        The response contains an `updateToken`. It is shown once and never
+        again, is held only by the sharer's device, and **must never transit
+        the voice channel** — it is the bearer secret for updating and revoking
+        the session, not something to read aloud.
+
+        `ttlSeconds` is a *request*, not an instruction: the server clamps it
+        into its configured `[min, max]` window. Check `expiresAt` in the
+        response for what you actually got.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateSessionRequest'
+            examples:
+              selfStatic:
+                summary: Someone sharing where they are
+                value:
+                  position:
+                    lat: 51.50809
+                    lon: -0.12789
+                    accuracyM: 12
+                    source: gnss
+                    takenAt: '2026-07-20T13:04:11.000Z'
+                  mode: static
+                  subject: self
+                  ttlSeconds: 1800
+              thirdPartyLive:
+                summary: Reporting an incident the caller is not standing at
+                value:
+                  position:
+                    lat: 53.48095
+                    lon: -2.23743
+                    accuracyM: 40
+                    source: manual
+                    takenAt: '2026-07-20T13:04:11.000Z'
+                  mode: live
+                  subject: third-party
+                  note: third floor, back stairwell
+      responses:
+        '201':
+          description: Session minted.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateSessionResponse'
+              example:
+                code: X7K9P2Q4
+                display: X7K9-P2Q4
+                phonetic: X-ray Seven Kilo Nine Papa Two Quebec Four
+                expiresAt: '2026-07-20T13:34:11.000Z'
+                updateToken: 8Jp0kQ2yQ0m4xUqR3fVwT1nZ7bC9dE5hK2sL4pM6rN8
+        '400':
+          description: |
+            The position failed validation — out-of-range coordinates, a
+            negative or non-finite accuracy, an unrecognised `source`, or a
+            `takenAt` more than 60 seconds in the future. A fix timestamped in
+            the future is either a broken clock or a forgery, and neither
+            should reach a dispatcher wearing the authority of a real fix.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProtocolError'
+              example:
+                error: invalid-position
+                message: lat must be a finite number between -90 and 90
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          description: |
+            The node could not allocate a free code after several attempts and
+            declined to overwrite somebody else's live session. Retry.
+
+            Implementation note: the reference resolver currently returns
+            `error: "not-found"` in this body, which is a wart — the code is
+            reused as a generic denial rather than describing the condition.
+            It is documented here as it actually behaves rather than as it
+            ought to. Clients should key off the `503` status, not the `error`
+            value.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProtocolError'
+              example:
+                error: not-found
+                message: could not allocate a free code, try again
+
+  /v1/sessions/{code}:
+    parameters:
+      - $ref: '#/components/parameters/Code'
+
+    get:
+      tags: [sessions]
+      operationId: resolveSession
+      summary: Resolve a session code to a position
+      description: |
+        The dispatcher-facing endpoint. Requires a bearer key when the node runs
+        in `apikey` mode; in `open` mode any caller may resolve any code, which
+        is exactly the enumeration surface the protocol exists to deny.
+
+        ## Claim on first read
+
+        In `apikey` mode the first resolver to read a code is bound to it. Every
+        subsequent read by a *different* resolver identity returns the same
+        `404 not-found` as a code that never existed. This is the anti-harvest
+        control: a rogue key holder cannot quietly sweep the namespace and
+        accumulate resolvable codes, because each successful guess is recorded
+        against their identity and locks the code to them.
+
+        The honest cost: claiming is first-come, not first-*legitimate*. A rogue
+        resolver that reaches a code before the real control room locks the
+        real control room out. That is a denial-of-service on one session, which
+        is a worse-than-nothing outcome for that call, and it is accepted
+        because the alternative — unlimited silent re-reads — is worse at scale.
+
+        **Claiming is disabled entirely in `open` mode**, because an
+        unauthenticated caller has no identity to bind a code to. A node in
+        `open` mode therefore has no anti-harvest control at all, and says so in
+        the `warning` field of a successful response.
+
+        Audit logging records *that* a lookup happened — timestamp, code,
+        resolver identity, outcome — and never the coordinates. Full
+        post-incident accountability, no database of where anyone was.
+      responses:
+        '200':
+          description: |
+            Resolved. In `apikey` mode the code is now claimed by the calling
+            resolver.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResolvedSession'
+              example:
+                code: X7K9P2Q4
+                position:
+                  lat: 51.50809
+                  lon: -0.12789
+                  accuracyM: 12
+                  source: gnss
+                  takenAt: '2026-07-20T13:04:11.000Z'
+                mode: static
+                subject: self
+                createdAt: '2026-07-20T13:04:11.000Z'
+                updatedAt: '2026-07-20T13:04:11.000Z'
+                expiresAt: '2026-07-20T13:34:11.000Z'
+                claimedBy: control-room-a
+        '400':
+          $ref: '#/components/responses/InvalidCode'
+        '401':
+          description: |
+            No bearer key, or a key this node does not recognise. Only possible
+            in `apikey` mode.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProtocolError'
+              example:
+                error: unauthorised
+                message: a valid resolver API key is required
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+    patch:
+      tags: [sessions]
+      operationId: updateSessionPosition
+      summary: Push a new position to a live session
+      description: |
+        Authorised by the session's `updateToken`, not by a resolver key. Only
+        the device that minted the session can move it.
+
+        `expiresAt` is deliberately **not** extended by an update. A live
+        session must not become immortal simply by continuing to move; the
+        sharer re-mints if they need longer.
+
+        Only sessions minted with `mode: "live"` accept updates. A static
+        session returns `409 not-live` — and note that this distinction is safe
+        to expose, unlike the `404` cases, because reaching it already required
+        presenting the correct `updateToken`. The caller has proved they minted
+        the session, so telling them about it leaks nothing.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdatePositionRequest'
+      responses:
+        '204':
+          description: Position updated. No body.
+        '400':
+          description: |
+            Either the code in the path failed to parse or checksum
+            (`invalid-code`), or the supplied position failed validation
+            (`invalid-position`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProtocolError'
+        '404':
+          $ref: '#/components/responses/NotFoundWithToken'
+        '409':
+          description: |
+            The session exists and the token is correct, but it was minted as
+            `static` and cannot be updated.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProtocolError'
+              example:
+                error: not-live
+                message: session is static and cannot be updated
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+    delete:
+      tags: [sessions]
+      operationId: revokeSession
+      summary: Revoke a session immediately
+      description: |
+        Authorised by the session's `updateToken`. The record is deleted at
+        once rather than left to expire — the sharer's "I am safe now, forget
+        me" control.
+
+        Note that this operation takes a **request body**, which is unusual for
+        `DELETE` and is tolerated but not required by HTTP intermediaries. It
+        is done this way to keep the `updateToken` out of the URL, and
+        therefore out of access logs, proxy logs, and browser history. Some
+        clients and proxies strip bodies from `DELETE`; a deployment that hits
+        that should move the token to a header rather than a query parameter,
+        for the same reason.
+
+        After revocation the code returns `404 not-found` — identical to a code
+        that never existed. That is the whole point; see the `404` description.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RevokeSessionRequest'
+      responses:
+        '204':
+          description: Session revoked. No body.
+        '400':
+          $ref: '#/components/responses/InvalidCode'
+        '404':
+          $ref: '#/components/responses/NotFoundWithToken'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+components:
+  securitySchemes:
+    resolverKey:
+      type: http
+      scheme: bearer
+      description: |
+        A resolver API key issued by the node operator. The node maps the key to
+        a resolver *identity* (e.g. `control-room-a`), which is what appears in
+        the audit log and in `claimedBy`. Required for `GET /v1/sessions/{code}`
+        when the node runs in `apikey` mode; ignored in `open` mode.
+
+  parameters:
+    Code:
+      name: code
+      in: path
+      required: true
+      description: |
+        An 8-character session code. Parsing is deliberately permissive because
+        the value arrives via a human on a phone call: case is folded, and
+        hyphens, underscores, dots, commas and slashes are treated as separator
+        noise, so `X7K9P2Q4`, `x7k9-p2q4` and `X7K9.P2Q4` are the same code.
+        Crockford aliases are folded too — a typed letter `O` becomes `0`, and
+        `I` or `L` become `1`.
+
+        Spoken forms (`X-ray Seven Kilo Nine ...`) are accepted by the package
+        parser but are awkward in a URL path because they contain spaces;
+        percent-encode them or normalise client-side with `parseCode` first.
+
+        The final character is a checksum over the preceding seven. It is
+        verified locally before the datastore is consulted, so a mistyped code
+        is rejected as `400 invalid-code` and never becomes a lookup.
+      schema:
+        type: string
+        minLength: 8
+        maxLength: 64
+      examples:
+        canonical:
+          value: X7K9P2Q4
+        hyphenated:
+          value: X7K9-P2Q4
+
+  responses:
+    InvalidCode:
+      description: |
+        The supplied code is not a well-formed session code — wrong length,
+        an unreadable character, or a failed checksum.
+
+        This is safe to distinguish from `404` because it is decided by pure
+        local arithmetic, before any datastore lookup. It reveals nothing about
+        which codes exist; the caller could have computed the same answer
+        offline.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ProtocolError'
+          example:
+            error: invalid-code
+            message: 'code rejected: bad-checksum'
+
+    NotFound:
+      description: |
+        **No session for that code — and deliberately no indication of why.**
+
+        This single response covers four distinct situations:
+
+        1. the code never existed;
+        2. the code existed and expired;
+        3. the code existed and was revoked;
+        4. the code exists and is claimed by a different resolver.
+
+        Collapsing them is a security requirement, not an omission. Cases 2, 3
+        and 4 would each confirm to the caller that the code they presented was
+        **real** — which is exactly the signal enumeration defence exists to
+        deny. A confirmed-real code is far more valuable to an attacker than the
+        record behind it: it turns blind guessing across 34,359,738,368 codes
+        into a verified hit.
+
+        The legitimate dispatcher loses nothing, because they have the caller on
+        the line and can ask for the code again.
+
+        **Implementers: do not split these apart.** No `410 Gone` for expired,
+        no `403` for claimed, no `reason` field, no differing `message` string,
+        no different response size or timing. Any of those reintroduces the
+        oracle. If a future ticket asks for "better error messages here", this
+        paragraph is the answer to it.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ProtocolError'
+          example:
+            error: not-found
+            message: no session for that code
+
+    NotFoundWithToken:
+      description: |
+        **No session for that code, or the wrong `updateToken` — deliberately
+        indistinguishable.**
+
+        On this operation the ambiguity covers five situations: the four listed
+        under the resolve endpoint's `404` (never existed, expired, revoked,
+        claimed elsewhere) plus *the session exists but the supplied
+        `updateToken` does not match*.
+
+        The token case matters most here. Answering "that code is real, but your
+        token is wrong" would turn this endpoint into a free code oracle for
+        anyone willing to send a junk token — an attacker does not need to
+        update the session, only to learn that it exists. Tokens are compared
+        against a stored hash in constant time for the same reason.
+
+        **Implementers: do not split these apart.**
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ProtocolError'
+          example:
+            error: not-found
+            message: no session for that code
+
+    RateLimited:
+      description: |
+        Too many requests from this source.
+
+        Resolver limits should be priced on the **miss rate**, not on raw
+        request volume: a control room resolving codes read to it over the phone
+        almost always hits, while an enumerating attacker almost always misses.
+        Volume alone cannot tell them apart; the miss rate can. Mint limits
+        should stay deliberately loose, because throttling a real caller in an
+        emergency is a worse failure than absorbing some abuse.
+
+        Not emitted by the current reference implementation — rate limiting is
+        ticket B7 and is not yet built. It is specified here so clients handle
+        it correctly when it lands, and so nobody reads its absence as a
+        statement that the namespace does not need it.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ProtocolError'
+          example:
+            error: rate-limited
+            message: too many resolve attempts
+
+  schemas:
+    PositionSource:
+      type: string
+      enum: [gnss, network, manual]
+      description: |
+        Where the fix came from. Dispatchers need this to judge how far to trust
+        `accuracyM` — a GNSS fix claiming 8m means something very different from
+        a network fix claiming 8m, and a `manual` pin means a human's belief
+        about a location rather than a measurement of one.
+
+    SessionMode:
+      type: string
+      enum: [static, live]
+      default: static
+      description: |
+        `static` captures a single fix. `live` keeps updating until expiry — a
+        moving casualty, a drifting boat, someone walking to find signal. No
+        coordinate-encoding scheme can express this at all; it is only possible
+        because a session code is a pointer rather than an encoded position.
+
+        Any value other than `live` is treated as `static`.
+
+    SessionSubject:
+      type: string
+      enum: [self, third-party]
+      default: self
+      description: |
+        Whether the session describes where the sharer is, or somewhere else.
+
+        `third-party` is the case AML structurally cannot serve: someone
+        reporting an incident they are not standing at. The dispatcher must see
+        this, because it changes whether the pin is a casualty or a witness.
+
+        Any value other than `third-party` is treated as `self`.
+
+    Position:
+      type: object
+      required: [lat, lon, accuracyM, source]
+      properties:
+        lat:
+          type: number
+          format: double
+          minimum: -90
+          maximum: 90
+          description: WGS84 latitude in degrees.
+        lon:
+          type: number
+          format: double
+          minimum: -180
+          maximum: 180
+          description: WGS84 longitude in degrees.
+        accuracyM:
+          type: number
+          format: double
+          minimum: 0
+          description: Radius of 95% confidence, in metres.
+        source:
+          $ref: '#/components/schemas/PositionSource'
+        takenAt:
+          type: string
+          format: date-time
+          description: |
+            ISO 8601 timestamp of the fix itself, not of the request — a fix can
+            be several seconds old by the time it is sent, and a dispatcher
+            watching a moving casualty needs to know which.
+
+            Optional on input; defaults to the server's clock at receipt.
+            Rejected if more than 60 seconds in the future.
+      examples:
+        - lat: 51.50809
+          lon: -0.12789
+          accuracyM: 12
+          source: gnss
+          takenAt: '2026-07-20T13:04:11.000Z'
+
+    CreateSessionRequest:
+      type: object
+      required: [position]
+      properties:
+        position:
+          $ref: '#/components/schemas/Position'
+        mode:
+          $ref: '#/components/schemas/SessionMode'
+        subject:
+          $ref: '#/components/schemas/SessionSubject'
+        ttlSeconds:
+          type: integer
+          minimum: 1
+          description: |
+            Requested lifetime in seconds. The server clamps this into its
+            configured window — 60s to 4h in the reference resolver, defaulting
+            to 1800s (30 minutes) when omitted. The granted value is whatever
+            `expiresAt` in the response says.
+        note:
+          type: string
+          maxLength: 280
+          description: |
+            Free-text from the sharer, e.g. "third floor, back stairwell".
+            Silently truncated to 280 characters rather than rejected — a note
+            that is too long should not cost someone their emergency call.
+
+    CreateSessionResponse:
+      type: object
+      required: [code, display, phonetic, expiresAt, updateToken]
+      properties:
+        code:
+          type: string
+          description: Canonical 8-character code.
+        display:
+          type: string
+          description: Grouped for reading off a screen — `X7K9-P2Q4`.
+        phonetic:
+          type: string
+          description: |
+            The words to read aloud. NATO/ICAO spelling for letters, because it
+            is designed to break up the "E-set" (B/C/D/E/G/P/T/V/Z all rhyme
+            down a phone line; Bravo/Charlie/Delta do not). Digits are spoken
+            plainly rather than in radio style — the reader is a frightened
+            member of the public, not a trained operator, and the parser accepts
+            "niner" either way.
+        expiresAt:
+          type: string
+          format: date-time
+          description: The granted expiry, after server clamping.
+        updateToken:
+          type: string
+          description: |
+            Bearer secret authorising `PATCH` and `DELETE` on this session.
+            Returned exactly once, stored only as a hash on the server, held
+            only by the sharer's device. **Never read this aloud.**
+
+    ResolvedSession:
+      type: object
+      required: [code, position, mode, subject, createdAt, updatedAt, expiresAt]
+      properties:
+        code:
+          type: string
+        position:
+          $ref: '#/components/schemas/Position'
+        mode:
+          $ref: '#/components/schemas/SessionMode'
+        subject:
+          $ref: '#/components/schemas/SessionSubject'
+        note:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+          description: |
+            When the position last changed. For a `live` session this is what
+            tells a dispatcher whether the pin is current or stale.
+        expiresAt:
+          type: string
+          format: date-time
+        claimedBy:
+          type: string
+          description: |
+            Identity of the resolver that claimed this code. Present only in
+            `apikey` mode; on a successful resolve it is normally the caller's
+            own identity, because any other claimant would have produced a
+            `404`.
+        warning:
+          type: string
+          description: |
+            Present only when the node is running in `open` mode, to say that
+            claiming — and therefore the anti-harvest control — is disabled.
+            Consoles should surface this prominently rather than swallowing it.
+
+    UpdatePositionRequest:
+      type: object
+      required: [updateToken, position]
+      properties:
+        updateToken:
+          type: string
+          description: The secret returned at mint time.
+        position:
+          $ref: '#/components/schemas/Position'
+
+    RevokeSessionRequest:
+      type: object
+      required: [updateToken]
+      properties:
+        updateToken:
+          type: string
+
+    Health:
+      type: object
+      required: [status, resolverMode, liveSessions]
+      properties:
+        status:
+          type: string
+          const: ok
+        resolverMode:
+          type: string
+          enum: [open, apikey]
+          description: |
+            `apikey` is the documented default for anything real. `open` means
+            any caller may resolve any code and claiming is disabled — see
+            `docs/THREAT-MODEL.md`.
+        liveSessions:
+          type: integer
+          minimum: 0
+          description: Count of unexpired sessions currently held by this node.
+
+    ProtocolError:
+      type: object
+      required: [error, message]
+      properties:
+        error:
+          type: string
+          enum:
+            - not-found
+            - invalid-code
+            - invalid-position
+            - unauthorised
+            - rate-limited
+            - not-live
+          description: |
+            Stable machine-readable code. Clients should branch on this, not on
+            `message`.
+
+            `not-found` intentionally covers *never existed*, *expired*,
+            *revoked*, *claimed by another resolver*, and — on `PATCH` and
+            `DELETE` — *wrong update token*. Distinguishing them would confirm
+            to an attacker that a guessed code is real, which is exactly the
+            signal enumeration defence must deny. This ambiguity is load-bearing.
+        message:
+          type: string
+          description: |
+            Human-readable detail for logs and developers. Not stable, not for
+            branching, and — for `not-found` — deliberately identical across
+            every situation it covers.
+
+security:
+  - resolverKey: []
