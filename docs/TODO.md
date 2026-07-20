@@ -1,16 +1,40 @@
 # What's left
 
-State as of 2026-07-20. **Nothing is on `main` in any repo yet** — eight
-branches outstanding.
+State as of 2026-07-20.
+
+## ✅ LIVE
+
+- **App:** https://stu-greenshoots.github.io/whereareyou-web/
+- **API:** https://whereareyou-api.onrender.com (apikey mode, Redis-backed,
+  structural expiry, rate limiting — all confirmed on the deployment)
+- Full loop verified end to end through the public URL: mint on the share
+  screen → resolve in the look-up console → mistyped code rejected → offline
+  codes resolve client-side with no server.
+- All eight feature branches merged to `main` in all three repos.
+- `whereareyou-protocol` and `whereareyou-web` are **public**;
+  `whereareyou-api` is still private.
+
+### Live-deployment caveats
+
+- **Render free tier spins down after ~15 min idle** — first request after a
+  quiet spell takes 30–50s. Fine for test users, wrong for anything real.
+- **The demo key ships in the public bundle.** Everyone shares `demo-key-alpha`,
+  so claim-on-read binds every look-up to one identity and the anti-harvest
+  property is off. A demo trade, documented in `Resolve.tsx`.
+- **Pages redeploys are manual** (`gh-pages` branch, force-pushed) until the CI
+  workflow can be added — see below.
 
 ---
 
-## 0. Blocked on you
+## 0. Blocked on you (small, optional)
 
-- [ ] **`npm login`** — failed with E401. Blocks publishing
-      `@whereareyou/protocol`, which in turn blocks B9 (docker-compose), because
-      a private git dependency pinned over SSH means `docker compose up` cannot
-      work for anyone without repo access.
+- [ ] **`gh auth refresh -h github.com -s workflow`** — lets me add the Pages
+      CI workflow (already written, held in scratch) so redeploys stop being a
+      manual `gh-pages` push. Not urgent; the site is live.
+- [ ] **npm publish** — optional now. The protocol repo being public already
+      makes the git dependency installable everywhere with no credentials, so
+      this is only about registry distribution, not unblocking anything. Needs a
+      2FA code when you want it.
 
 ---
 
