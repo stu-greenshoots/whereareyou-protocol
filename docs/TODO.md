@@ -31,13 +31,30 @@ falls through to the offline codec, so the whole no-signal path is coherent.
 
 ## Plan going forward
 
-### Tier 1 — finish "truly usable" (nearly there)
+### Tier 1 — finish "truly usable" (NEXT — do these first)
+
+Both are in `whereareyou-web`. Deploy after: see `whereareyou-web/DEPLOY.md`
+(the 3-env-var build + gh-pages force-push — don't skip the env vars). Verify on
+a real phone where possible; the UI can't be seen from the CLI.
+
 - [x] **C1 PWA service worker + offline shell** — done.
-- [ ] **Captive-portal probe bug** (`web/connectivity.ts:81`, `if (online) return`
-      short-circuits the case its own comment describes). Directly affects
-      offline detection — worth fixing now the offline path matters.
-- [ ] **Dispatcher map never passes `offline`** — tiles failing show a bare grey
-      box in the console with no explanation. One-line fix.
+
+- [ ] **Captive-portal probe never runs** — `src/connectivity.ts:~81`. The
+      probe effect starts `if (online) return;`, but after `cameOnline()` the
+      state is `linkUp && verified==='unknown'`, which evaluates `online===true`
+      — so the probe the comment above it describes never fires, and a silent
+      network death with no `offline` event leaves the app believing it's
+      connected. **Fix:** run the probe when `verified === 'unknown'` (not only
+      when fully offline), or, if keeping the optimistic behaviour, correct the
+      comment + README so they stop describing a probe that doesn't run. Read
+      the file's own comments first — the intent is documented.
+
+- [ ] **Dispatcher map shows a bare grey box offline** — `src/Resolve.tsx`. Its
+      `<Map>` usages never pass the `offline` prop, so when tiles fail the
+      console shows an unexplained grey rectangle. The Share screen already does
+      this right (`offline={!online}`). **Fix:** thread connectivity into
+      Resolve (it can use the same `useConnectivity()` hook) and pass
+      `offline={!online}` to `<Map>`. Small.
 
 ### Tier 2 — trustworthy for real use (before it's more than a tester)
 - [ ] **B8 audit log + fix the broken log redaction.** The redaction never
