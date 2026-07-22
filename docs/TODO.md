@@ -39,22 +39,22 @@ a real phone where possible; the UI can't be seen from the CLI.
 
 - [x] **C1 PWA service worker + offline shell** — done.
 
-- [ ] **Captive-portal probe never runs** — `src/connectivity.ts:~81`. The
-      probe effect starts `if (online) return;`, but after `cameOnline()` the
-      state is `linkUp && verified==='unknown'`, which evaluates `online===true`
-      — so the probe the comment above it describes never fires, and a silent
-      network death with no `offline` event leaves the app believing it's
-      connected. **Fix:** run the probe when `verified === 'unknown'` (not only
-      when fully offline), or, if keeping the optimistic behaviour, correct the
-      comment + README so they stop describing a probe that doesn't run. Read
-      the file's own comments first — the intent is documented.
+- [x] **Captive-portal probe never runs** — `src/connectivity.ts`. Fixed: the
+      probe effect now gates on `verified === 'reachable'` (not `online`), so it
+      runs in the optimistic `verified === 'unknown'` state too, and a failed
+      probe now records `'unreachable'` so a silent network death downgrades
+      instead of leaving the app believing it's connected. Comment + README
+      updated to describe the probe that now actually runs. (Side effect: one
+      lightweight `/health` GET on load, which promotes optimism to proof.)
 
-- [ ] **Dispatcher map shows a bare grey box offline** — `src/Resolve.tsx`. Its
-      `<Map>` usages never pass the `offline` prop, so when tiles fail the
-      console shows an unexplained grey rectangle. The Share screen already does
-      this right (`offline={!online}`). **Fix:** thread connectivity into
-      Resolve (it can use the same `useConnectivity()` hook) and pass
-      `offline={!online}` to `<Map>`. Small.
+- [x] **Dispatcher map shows a bare grey box offline** — `src/Resolve.tsx`.
+      Fixed: `Resolve` now calls `useConnectivity()` once and threads
+      `offline={!online}` down to both the `SessionView` and `OfflineView`
+      `<Map>`s, matching the Share screen.
+
+  _Both implemented and building clean (`npm run build` = tsc + vite + PWA).
+  Not yet deployed, and the offline map states + captive-portal downgrade still
+  need eyeballing on a real device — the UI can't be seen from the CLI._
 
 ### Tier 2 — trustworthy for real use (before it's more than a tester)
 - [ ] **B8 audit log + fix the broken log redaction.** The redaction never
