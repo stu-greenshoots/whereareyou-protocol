@@ -48,6 +48,12 @@ export interface CreateSessionRequest {
    * sketches are dropped silently — never a reason to refuse the mint.
    */
   sketch?: string;
+  /**
+   * A spot the sharer MARKED — "the incident is here" — as opposed to
+   * `position`, which is where they are. Same validation as a position;
+   * invalid markers are dropped silently, never a reason to refuse the mint.
+   */
+  marker?: Position;
 }
 
 export interface CreateSessionResponse {
@@ -72,6 +78,8 @@ export interface ResolvedSession {
   note?: string;
   /** The sharer's drawing, exactly as their device sent it. Opaque here. */
   sketch?: string;
+  /** The spot the sharer marked — somewhere they pointed at, not where they are. */
+  marker?: Position;
   createdAt: string;
   updatedAt: string;
   expiresAt: string;
@@ -87,6 +95,8 @@ export interface UpdatePositionRequest {
    * minting; an invalid sketch never blocks the position update.
    */
   sketch?: string;
+  /** When present, replaces the stored marked spot. Same silent-drop rule. */
+  marker?: Position;
 }
 
 /**

@@ -634,6 +634,12 @@ components:
             resolve. Invalid or oversized sketches are dropped silently and
             the session is still created — a malformed sketch must never cost
             someone their code.
+        marker:
+          $ref: '#/components/schemas/Position'
+          description: |
+            A spot the sharer MARKED — "the incident is here" — as opposed to
+            `position`, which is where they are. Invalid markers are dropped
+            silently; never a reason to refuse the request.
 
     CreateSessionResponse:
       type: object
@@ -685,6 +691,9 @@ components:
             The sharer's drawing, exactly as their device sent it. Opaque to
             the resolver; decode with the protocol package and treat a failed
             decode as "no sketch" — never let a bad sketch cost the position.
+        marker:
+          $ref: '#/components/schemas/Position'
+          description: The spot the sharer marked — not where they are.
         createdAt:
           type: string
           format: date-time
@@ -729,6 +738,12 @@ components:
             arrow after the code is already out. Same validation and
             silent-drop semantics as minting; an invalid sketch never blocks
             the position update.
+        marker:
+          $ref: '#/components/schemas/Position'
+          description: |
+            A spot the sharer MARKED — "the incident is here" — as opposed to
+            `position`, which is where they are. Invalid markers are dropped
+            silently; never a reason to refuse the request.
 
     RevokeSessionRequest:
       type: object
