@@ -28,11 +28,13 @@ Stu: D1 both variants, D2 no web test runner for v1 (rationale below), D3 yes.
   plan branch retired. Post-trial additions from Stu, same branch: the
   look-up maps gained a full-screen mode and a viewer-locate control (a
   neutral dot for the resolver's own position — never the pin).
-- **Remaining:** Render api deploy of `8513169` — root cause found: the
-  service has auto-deploy OFF (every deploy ever was manual); Stu triggered
-  it manually 22 Aug 12:43, verify the live sketch round-trip once it lands.
-  Then deploy web per DEPLOY.md. Post-trial console additions (full screen,
-  viewer dot) eyeballed on LAN via hot reload.
+- **SHIPPED, 22 Aug 2026.** Render api deploy landed (root cause of the
+  delay: the service has auto-deploy OFF — every deploy is manual from the
+  dashboard; now recorded in the workspace CLAUDE.md). Live sketch
+  round-trip verified against production, web deployed per DEPLOY.md, live
+  bundle confirmed to carry the feature. Post-trial additions shipped with
+  it: full-screen mode on the drawing and look-up maps, and a viewer-locate
+  control (neutral slate dot — never the pin) on look-up.
 
 ---
 
