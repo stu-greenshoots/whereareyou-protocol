@@ -107,7 +107,29 @@ pedestal"): UK-scoped, ~3m, 100% error detection. Verified. Working map demo in
 - [ ] **(Later) Global via a leading region word** — one extra word, strict
       superset of the UK build. See `docs/WORD-CODES.md`.
 
-### Parked ideas (revisit later)
+### Draw-on-map annotations for the SHARE code — PLANNED (22 Aug)
+
+**No longer parked.** A full implementation plan now exists:
+**`whereareyou-web` branch `claude/map-drawing-share-8t97sb`, `docs/map-drawing-plan.md`.**
+Plan only — nothing implemented. It spans all three repos: a `sketch.ts` codec
+here, an opaque `sketch` field through the API store and routes, and a Leaflet
+drawing layer plus toolbar in the web app.
+
+Key decisions already taken in it: the drawing rides the **session**, not the
+link or the code; the resolver stores an **opaque base64url string it never
+parses**, so the sketch inherits the session TTL structurally; drawing stays
+usable offline but must say plainly that it cannot be sent.
+
+Sequencing hazard, per the plan and confirmed here: the codec must land on
+protocol `main` before the other two repos can typecheck against it. Note the
+plan understates this slightly — `web` and `api` **pin protocol at a commit in
+their lockfiles** (`a73eac2`), so landing on `main` is not enough on its own;
+both lockfiles need refreshing too. See the workspace `CLAUDE.md`.
+
+Also note this repo's `word-codes` branch is 5 commits ahead of `main` and
+unpushed. Both tracks touch `src/index.ts` exports.
+
+The original idea, for context:
 
 - **Draw-on-map annotations for the SHARE code.** Let the sharer sketch on their
   map — the entrance, an arrow, the route from the nearest station — and have it
