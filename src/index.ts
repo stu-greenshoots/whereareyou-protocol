@@ -23,6 +23,14 @@ export {
   parseOffline,
 } from './offline.js';
 export type { OfflineParseFailure, OfflineParseResult, OfflinePosition } from './offline.js';
+export {
+  OFFLINE_ADDRESS_SPACE,
+  SENTENCE_CAPACITY,
+  SENTENCE_HAS_GLOBAL_COVERAGE,
+  parseSentence,
+  toSentence,
+} from './sentence.js';
+export type { SentenceParseFailure, SentenceParseResult } from './sentence.js';
 export { interpretCode } from './interpret.js';
 export type { InterpretFailure, Interpretation } from './interpret.js';
 export type * from './types.js';
