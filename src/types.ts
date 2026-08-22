@@ -52,19 +52,73 @@ export interface CreateSessionRequest {
    * A spot the sharer MARKED — "the incident is here" — as opposed to
    * `position`, which is where they are. Same validation as a position;
    * invalid markers are dropped silently, never a reason to refuse the mint.
+   *
+   * LEGACY since live v2: this is the single-marker form. A request carrying
+   * `markers` is authoritative and any `marker`/`markerIcon` beside it are
+   * ignored; a request carrying only `marker` is treated as a one-entry
+   * `markers` list whose id the server assigns.
    */
   marker?: Position;
   /** What the marked spot IS — one of MARKER_ICONS. Unknown values dropped. */
   markerIcon?: MarkerIcon;
+  /**
+   * All placed markers, ≤ MAX_SESSION_MARKERS. Invalid entries are dropped
+   * silently, never a reason to refuse the mint. See the mirror rule on
+   * `ResolvedSession.markers`.
+   */
+  markers?: SessionMarker[];
 }
 
 /**
  * The vocabulary of marked spots. Small on purpose: each one must read at
  * 12px inside a diamond, on a phone, outdoors. Renderers fall back to a
- * plain spot for anything they do not recognise.
+ * plain spot for anything they do not recognise — which is also what makes
+ * extending this list safe: additions here never break an older renderer.
+ *
+ * The list is APPEND-ONLY. The first six are the v1 vocabulary; everything
+ * after `house` landed with live v2 (outdoors and rendezvous words: a camp,
+ * a water source, a hazard, a meeting point, a dog to find, a photo spot,
+ * a boat, a distinctive tree).
  */
-export const MARKER_ICONS = ['spot', 'warning', 'flag', 'cross', 'car', 'house'] as const;
+export const MARKER_ICONS = [
+  'spot',
+  'warning',
+  'flag',
+  'cross',
+  'car',
+  'house',
+  'tent',
+  'water',
+  'danger',
+  'meet',
+  'dog',
+  'camera',
+  'boat',
+  'tree',
+] as const;
 export type MarkerIcon = (typeof MARKER_ICONS)[number];
+
+/** Most markers a session may carry. Enforced by both ends. */
+export const MAX_SESSION_MARKERS = 20;
+/** Longest marker name, in UTF-16 code units. Longer names are truncated. */
+export const MAX_MARKER_NAME_CHARS = 60;
+
+/**
+ * One placed marker among several. The `id` is CLIENT-generated — 1..64
+ * characters of `A-Z a-z 0-9 _ -` (a UUID fits) — and must be unique within
+ * the session, because "reached" events refer to markers by id alone. It is
+ * stable for the marker's life; moving a marker keeps its id, replacing it
+ * mints a new one.
+ */
+export interface SessionMarker {
+  id: string;
+  /** Where the marker is. A claim about the world, not a fix. */
+  position: Position;
+  /** What the spot IS — one of MARKER_ICONS. */
+  icon: MarkerIcon;
+  /** Optional label, ≤ MAX_MARKER_NAME_CHARS. Never logged. */
+  name?: string;
+}
 
 export interface CreateSessionResponse {
   code: string;
@@ -88,9 +142,17 @@ export interface ResolvedSession {
   note?: string;
   /** The sharer's drawing, exactly as their device sent it. Opaque here. */
   sketch?: string;
-  /** The spot the sharer marked — somewhere they pointed at, not where they are. */
+  /**
+   * The spot the sharer marked — somewhere they pointed at, not where they
+   * are. LEGACY MIRROR since live v2: on every read, `marker` and
+   * `markerIcon` are `markers[0].position` and `markers[0].icon`, or absent
+   * when `markers` is empty. Old readers keep working; new readers should
+   * use `markers` and ignore these two.
+   */
   marker?: Position;
   markerIcon?: MarkerIcon;
+  /** All placed markers, ≤ MAX_SESSION_MARKERS, in the order placed. */
+  markers?: SessionMarker[];
   createdAt: string;
   updatedAt: string;
   expiresAt: string;
@@ -106,9 +168,12 @@ export interface UpdatePositionRequest {
    * minting; an invalid sketch never blocks the position update.
    */
   sketch?: string;
-  /** When present, replaces the stored marked spot. Same silent-drop rule. */
+  /** When present, replaces the stored marked spot. Same silent-drop rule.
+   * LEGACY since live v2 — see the rule on `CreateSessionRequest.marker`. */
   marker?: Position;
   markerIcon?: MarkerIcon;
+  /** When present, replaces the stored marker list. Same silent-drop rule. */
+  markers?: SessionMarker[];
 }
 
 /**

@@ -2,7 +2,7 @@ openapi: 3.1.0
 
 info:
   title: whereareyou resolver node
-  version: 0.1.0
+  version: 0.2.0
   summary: Ephemeral location handover for emergency dispatch.
   description: |
     A resolver node mints and resolves **session codes** — 8-character
@@ -87,7 +87,12 @@ servers:
 
 tags:
   - name: sessions
-    description: Mint, resolve, update and revoke session codes.
+    description: Mint, resolve, update, extend and revoke session codes.
+  - name: push
+    description: |
+      Web Push. Subscriptions are stored against the session with the
+      session's own TTL, so structural expiry kills notifications by
+      construction — an expired session cannot ping anyone.
   - name: operations
     description: Liveness and deployment posture.
 
@@ -382,6 +387,136 @@ paths:
         '429':
           $ref: '#/components/responses/RateLimited'
 
+  /v1/sessions/{code}/extend:
+    parameters:
+      - $ref: '#/components/parameters/Code'
+
+    post:
+      tags: [sessions]
+      operationId: extendSession
+      summary: Extend a session's expiry
+      description: |
+        Authorised by the session's `updateToken`, like `PATCH` and `DELETE`.
+        Bumps the stored TTLs, re-arms the live-room expiry timer, and fans
+        out an `expiry` message to any connected room, so everyone — sharer,
+        joiners, dispatcher console — sees the new time at once.
+
+        This is compatible with the structural-expiry promise because the
+        *stated* expiry changes before it is reached: nobody is ever holding
+        a code whose lifetime silently grew after they read it.
+
+        `addMinutes` is a request, not an instruction, exactly like
+        `ttlSeconds` at mint: the server clamps so that the session's
+        **cumulative lifetime — `createdAt` to `expiresAt` — never exceeds
+        24 hours**. A code spoken aloud in public must not be extendable into
+        a permanent tracker. Check `expiresAt` in the response for what you
+        actually got; at the cap it comes back unchanged.
+
+        Works for both `static` and `live` sessions — extending is a TTL
+        operation, not a position one.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ExtendSessionRequest'
+      responses:
+        '200':
+          description: The granted expiry, after clamping.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExtendSessionResponse'
+              example:
+                expiresAt: '2026-07-20T14:34:11.000Z'
+        '400':
+          description: |
+            Either the code failed to parse or checksum (`invalid-code`), or
+            `addMinutes` is missing, non-integer, or less than 1.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProtocolError'
+        '404':
+          $ref: '#/components/responses/NotFoundWithToken'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  /v1/sessions/{code}/push:
+    parameters:
+      - $ref: '#/components/parameters/Code'
+
+    post:
+      tags: [push]
+      operationId: subscribePush
+      summary: Subscribe this device to a session's push notifications
+      description: |
+        No `updateToken`: holding the code grants a subscription, the same
+        POC posture as joining the live room. Owner and joiners alike
+        subscribe here to hear about resolves, zone and marker events, joins,
+        chat while backgrounded, and approaching expiry.
+
+        Subscriptions are stored **with the session's Redis TTL** — when the
+        session expires the subscriptions go with it, so notifications become
+        impossible after expiry by construction, not by cleanup job.
+
+        The subscription endpoint URL is effectively a device identifier and
+        must never be logged. A session holds at most 16 subscriptions (one
+        per possible room participant); further ones are dropped silently —
+        still `204`, deliberately indistinguishable.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [subscription]
+              properties:
+                subscription:
+                  $ref: '#/components/schemas/PushSubscription'
+      responses:
+        '204':
+          description: Subscription stored (or silently dropped at the cap).
+        '400':
+          description: |
+            Either the code failed to parse or checksum (`invalid-code`), or
+            the subscription is structurally not a Web Push subscription.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProtocolError'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  /v1/push/config:
+    get:
+      tags: [push]
+      operationId: pushConfig
+      summary: The server's Web Push configuration
+      description: |
+        Unauthenticated, like `/health`. Returns the VAPID public key clients
+        need to create a subscription. A deployment without push configured
+        returns `404` — clients treat that as "push unavailable here", not as
+        an error worth surfacing.
+      security: []
+      responses:
+        '200':
+          description: Push is available.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PushConfig'
+        '404':
+          description: This deployment has no VAPID keypair configured.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProtocolError'
+
 components:
   securitySchemes:
     resolverKey:
@@ -641,9 +776,21 @@ components:
             `position`, which is where they are. Invalid markers are dropped
             silently; never a reason to refuse the request.
         markerIcon:
-          type: string
-          enum: [spot, warning, flag, cross, car, house]
-          description: What the marked spot is. Unknown values are dropped.
+          $ref: '#/components/schemas/MarkerIcon'
+          description: |
+            What the marked spot is. Unknown values are dropped. LEGACY since
+            live v2 — see the mirror rule on `marker`.
+        markers:
+          type: array
+          maxItems: 20
+          items:
+            $ref: '#/components/schemas/SessionMarker'
+          description: |
+            All placed markers. When present it is authoritative and any
+            `marker`/`markerIcon` beside it are ignored; when only the legacy
+            `marker` is sent, the server treats it as a one-entry list whose
+            id it assigns. Invalid entries are dropped silently — never a
+            reason to refuse the request.
 
     CreateSessionResponse:
       type: object
@@ -697,10 +844,21 @@ components:
             decode as "no sketch" — never let a bad sketch cost the position.
         marker:
           $ref: '#/components/schemas/Position'
-          description: The spot the sharer marked — not where they are.
+          description: |
+            The spot the sharer marked — not where they are. LEGACY MIRROR
+            since live v2: on every read, `marker` and `markerIcon` are
+            `markers[0].position` and `markers[0].icon`, or absent when
+            there are no markers. Old readers keep working; new readers
+            should use `markers` and ignore these two.
         markerIcon:
           type: string
-          description: What the marked spot is.
+          description: What the marked spot is. Legacy mirror — see `marker`.
+        markers:
+          type: array
+          maxItems: 20
+          items:
+            $ref: '#/components/schemas/SessionMarker'
+          description: All placed markers, in the order placed.
         createdAt:
           type: string
           format: date-time
@@ -752,9 +910,21 @@ components:
             `position`, which is where they are. Invalid markers are dropped
             silently; never a reason to refuse the request.
         markerIcon:
-          type: string
-          enum: [spot, warning, flag, cross, car, house]
-          description: What the marked spot is. Unknown values are dropped.
+          $ref: '#/components/schemas/MarkerIcon'
+          description: |
+            What the marked spot is. Unknown values are dropped. LEGACY since
+            live v2 — see the mirror rule on `marker`.
+        markers:
+          type: array
+          maxItems: 20
+          items:
+            $ref: '#/components/schemas/SessionMarker'
+          description: |
+            All placed markers. When present it is authoritative and any
+            `marker`/`markerIcon` beside it are ignored; when only the legacy
+            `marker` is sent, the server treats it as a one-entry list whose
+            id it assigns. Invalid entries are dropped silently — never a
+            reason to refuse the request.
 
     RevokeSessionRequest:
       type: object
@@ -781,6 +951,114 @@ components:
           type: integer
           minimum: 0
           description: Count of unexpired sessions currently held by this node.
+
+    MarkerIcon:
+      type: string
+      enum:
+        - spot
+        - warning
+        - flag
+        - cross
+        - car
+        - house
+        - tent
+        - water
+        - danger
+        - meet
+        - dog
+        - camera
+        - boat
+        - tree
+      description: |
+        The vocabulary of marked spots, owned by `@whereareyou/protocol`
+        (`MARKER_ICONS`). Append-only: the first six are the v1 set, the rest
+        landed with live v2. Renderers fall back to a plain spot for anything
+        they do not recognise, which is what makes appending safe.
+
+    SessionMarker:
+      type: object
+      required: [id, position, icon]
+      properties:
+        id:
+          type: string
+          minLength: 1
+          maxLength: 64
+          pattern: '^[A-Za-z0-9_-]+$'
+          description: |
+            Client-generated (a UUID fits), unique within the session, stable
+            for the marker's life — "reached" events refer to it.
+        position:
+          $ref: '#/components/schemas/Position'
+          description: Where the marker is. A claim about the world, not a fix.
+        icon:
+          $ref: '#/components/schemas/MarkerIcon'
+        name:
+          type: string
+          maxLength: 60
+          description: |
+            Optional label, silently truncated to 60 characters. User
+            content — never logged.
+      description: One placed marker among several. See `markers` fields.
+
+    ExtendSessionRequest:
+      type: object
+      required: [updateToken, addMinutes]
+      properties:
+        updateToken:
+          type: string
+          description: The secret returned at mint time.
+        addMinutes:
+          type: integer
+          minimum: 1
+          maximum: 1440
+          description: |
+            Requested extension. Clamped so cumulative lifetime
+            (`createdAt` → `expiresAt`) never exceeds 24 hours.
+
+    ExtendSessionResponse:
+      type: object
+      required: [expiresAt]
+      properties:
+        expiresAt:
+          type: string
+          format: date-time
+          description: The granted expiry, after clamping.
+
+    PushSubscription:
+      type: object
+      required: [endpoint, keys]
+      properties:
+        endpoint:
+          type: string
+          format: uri
+          maxLength: 2048
+          description: |
+            The push service URL for this device — effectively a device
+            identifier. Never log it.
+        expirationTime:
+          type: [number, 'null']
+        keys:
+          type: object
+          required: [p256dh, auth]
+          properties:
+            p256dh:
+              type: string
+            auth:
+              type: string
+      description: |
+        A standard Web Push subscription, as `PushSubscription.toJSON()`
+        produces it. The server stores it verbatim and never interprets it
+        beyond structural validation.
+
+    PushConfig:
+      type: object
+      required: [vapidPublicKey]
+      properties:
+        vapidPublicKey:
+          type: string
+          description: |
+            The server's VAPID public key, base64url — the `applicationServerKey`
+            for `pushManager.subscribe()`.
 
     ProtocolError:
       type: object
