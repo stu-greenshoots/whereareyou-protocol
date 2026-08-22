@@ -463,3 +463,165 @@ that deferral never becomes forgetting:
 4. **Room state is single-instance, in-memory** — fine on one Render node,
    breaks on scale-out.
 5. **No abuse controls on drawings/markers beyond size and rate caps.**
+
+---
+
+## Live v2 + push (22 Aug 2026) — chat, trails, zones, extend, push
+
+Live v2 (`specs/live-v2-contract.md`) widens the surface: in-session chat,
+named zones with enter/leave/reached events, per-participant trails, avatars,
+multiple markers, session extend over REST, and Web Push. The five POC
+exposures above all still stand, and the first now covers more — the code
+grants presence and write access, and that write access now includes chat,
+zones, and marker lists. As with the rest of this document, this describes
+the contract, not necessarily what is deployed on any given day.
+
+### The logging rule first, because it covers everything below
+
+Live v2 introduces four new kinds of user content — chat bodies, zone names,
+trails, avatars — plus push endpoints, which are identifiers rather than
+content. **None of them may ever reach a log**, joining coordinates under the
+rule in §7. Enforcement is the B8 trick applied by construction: the audit
+event type has **no content field at all**, so a leaked chat body is a
+compile error, not a code-review catch. A rule that relies on every future
+contributor remembering it is not a rule; a type that cannot express the leak
+is.
+
+### Chat
+
+Message bodies are user content relayed through the server in plaintext
+(transport is TLS, §7; there is no E2E, §8, and the same reasoning applies).
+The server keeps a capped ring (`MAX_CHAT_HISTORY`, 50) in room memory so
+late joiners get context; it dies with the session and is never written to
+any store. Two consequences worth stating:
+
+- **A late joiner sees prior chat.** Anyone who obtains the code mid-session
+  reads what was said before they arrived. That is the same trust boundary as
+  the room itself — the code is the capability — but it makes chat
+  room-scoped, not moment-scoped: participants should assume everything they
+  type is visible to whoever holds the code, for the life of the session.
+- **Abuse containment is structural, not moderated.** No report button, no
+  filter, no operator. The containment is that rooms are small, participants
+  joined knowingly via a code or link from someone they are coordinating
+  with, messages are truncated at `MAX_CHAT_TEXT_CHARS` (500) and rendered as
+  text only, and everything expires with the session. For an ephemeral
+  emergency tool that is judged sufficient; for anything longer-lived it
+  would not be.
+
+### Trails and zone events — the escalation from position to history
+
+The item in this batch that changes the shape of what the room holds. Until
+v2 a position was transient: the latest fix, overwritten by the next. A
+trail is **in-session movement history, shared with the whole room** — where
+each participant has been, not only where they are — and zone events
+(`entered` / `left` / `reached`) are derived, more legible summaries of the
+same thing: the server now announces where people are relative to *named*
+places.
+
+The mitigations are bounds and lifetime, not access control:
+
+- Trails are capped at `MAX_TRAIL_FIXES` (20) per participant and delivered
+  in the welcome roster only; the event ring is capped at
+  `MAX_EVENT_HISTORY` (50).
+- Everything lives in room memory and dies at expiry. No store, no export,
+  nothing survives a cold start.
+- Participants joined knowingly, by presenting the code or following the
+  share link. Nobody's movement is retained who did not enter the room.
+- None of it reaches logs (the rule above).
+
+Defensible — bounded, ephemeral, consensual — but call it what it is: the
+room now holds a short movement history of everyone in it, and anyone
+holding the code holds that too. Detection running server-side adds no new
+data at rest, since positions already flow through the relay; it adds
+interpretation.
+
+### Zones
+
+A zone name is user content attached to a location — "the weir", "back
+gate" — which is exactly the pairing the logging rule exists for. Names are
+capped (`MAX_ZONE_NAME_CHARS`, 60), fanned out to the room, retained in room
+memory, and never logged.
+
+⚠️ **Zone create and remove are open to any participant** — any joiner can
+name a place, and any joiner can delete anyone's zone. That is the POC write
+posture (exposure 1 above) extended to a new object type, accepted with the
+same eyes open: a malicious joiner can vandalise the shared picture, as they
+already could with drawings and markers. Per-participant write control is
+future work, not a v2 property.
+
+### Push subscriptions
+
+A `PushSubscription` endpoint URL is a routable, per-device identifier —
+quasi-PII, closer to a device serial than to content. The handling:
+
+- **Stored under the session's Redis TTL**, so the same structural expiry
+  that ends the session ends the ability to notify: an expired session
+  *cannot* ping anyone, by construction rather than by cleanup job. Extend
+  bumps this TTL with the rest.
+- **Payloads say that something happened and which session — never
+  positions, chat bodies, or zone names.** The interesting data stays behind
+  the code; the push is a knock, not a message. This is by design, not an
+  optimisation, and it is what keeps the push path off the list of places a
+  location can leak.
+- **Endpoints are never logged** (the rule above).
+- Subscribing requires only the code — the same POC posture as joining the
+  room. The cap (16 per session) drops silently at the limit, returning the
+  same `204`, so the cap is not a probing oracle.
+
+One honest residual: Web Push routes through a third party (FCM, APNs,
+Mozilla's autopush). Payloads are encrypted to the browser (RFC 8291), so
+the push service reads nothing — but it observes timing and volume, which is
+metadata about when a session is active. Accepted; that is how the platform
+works.
+
+### Extend, and the rejected restart-same-code
+
+**Extend is safe because it moves a deadline that has not yet passed.** The
+owner authenticates with the `updateToken` (hashed, constant-time, wrong
+token → the uniform `404` of §2), the *stated* expiry changes before it is
+reached, the dispatcher sees the new `expiresAt` on resolve, and the room is
+told via an `expiry` fanout. Nobody is relying on the old deadline in a way
+the change betrays.
+
+It does weaken §2's TTL argument at the margin, and that should be said
+plainly: minting clamps lifetime to 60s–4h, and extend raises the achievable
+lifetime to a **cumulative 24 h cap** (`createdAt` → `expiresAt`, clamped at
+the endpoint; at the cap `expiresAt` comes back unchanged). A code spoken
+aloud can now be live for a day, not an afternoon. The cap is the control —
+without it, "extend" decays into "permanent code", which would put session
+codes on the wrong side of §4's own criticism.
+
+**Restart-same-code is rejected, and the rejection is a decision of
+record.** The proposal — after expiry, re-mint the *same* code for a new
+session — fails the threat model on its face: expiry is the only limit on
+the voice channel (§7), and restarting **re-arms a code that was spoken
+aloud in public**. Anyone who overheard it, wrote it down, or has it in a
+call recording gets a second window into a fresh session they were never
+part of. Binding restart to a logged-in account does not help:
+**account-binding limits who can trigger the restart, not who can exploit
+the re-armed code.** The legitimate story is already served by share
+history + resume, which re-shares the same content under a fresh code and
+costs the attacker everything. If a concrete need ever appears, it reopens
+here first — this section is the record of why the answer was no.
+
+### Avatars
+
+A small user-supplied image, relayed to everyone in the room. Containment is
+at the edges: format-locked by pattern to `data:image/(png|jpeg|webp)` — no
+SVG, so no script-bearing image format — and capped at `MAX_AVATAR_CHARS`
+(10,240). Anything failing either check is **dropped silently, never a
+reason to refuse the join**: an avatar is decoration, and a join must not
+fail over decoration. The residual is content, not code — a joiner can show
+the room an offensive image, contained the same way as chat: small rooms,
+known joiners, session expiry. Avatars are never logged.
+
+### Summary of new weaknesses
+
+| Weakness | Status |
+|---|---|
+| Chat, zones, markers writable by any code-holder | POC posture (exposure 1 above); per-participant control is future work |
+| Room retains movement history (trails, events) | Accepted: bounded, in-session only, dies at expiry, never logged |
+| Cumulative lifetime now up to 24 h via extend | Accepted; the cap is the control — no permanent codes |
+| Restart-same-code | **Rejected** — re-arms an overheard code; recorded above |
+| Push service sees traffic timing/volume | Accepted; payloads encrypted and content-free by design |
+| Offensive chat/avatar content | Accepted for POC: capped, ephemeral, small known rooms |
