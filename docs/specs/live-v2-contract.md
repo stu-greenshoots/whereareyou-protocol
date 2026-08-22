@@ -42,7 +42,7 @@ with `parseLiveClientMessage` — null means drop the frame, nothing else.
 | `sketch` | `{type, sketch}` | Unchanged from v1. |
 | `chat` | `{type, text}` | Trimmed; truncated (not rejected) at 500 chars; blank → dropped as malformed. |
 | `zone-create` | `{type, id, name, center: Position, radiusM}` | `id` client-generated (id rule below); name 1–60 chars after trim; radius 1–10,000 m. |
-| `zone-remove` | `{type, id}` | Any participant may remove any zone (POC write posture). |
+| `zone-remove` | `{type, id}` | Honoured only when the remover is the zone's **creator**, matched by the best stable identity available — today that is the same-connection participantId (participants carry no account identity on this wire). POC-honest caveat, stated plainly: an anonymous creator who reconnects gets a new participantId and so **loses remove rights on their own zone**. The **session owner** (the connection that presented the `updateToken` at hello) may remove any zone. An unauthorised remove is **silently dropped — no error frame**. *(Supersedes the original v2 posture that let any participant remove any zone.)* |
 
 ### Server → client
 
@@ -54,7 +54,7 @@ with `parseLiveClientMessage` — null means drop the frame, nothing else.
 | `chat` | `{type, id, participantId, name?, avatar?, text, at}` | Fanout of one `ChatMessage`. `id`/`at` server-assigned. `name`/`avatar` are the sender's identity **stamped by the server at send time** from their hello (absent for anonymous senders, and from a pre-0.2.1 server) — participant ids are per-connection, so history must not depend on roster liveness. Clients prefer the stamped `name`, fall back to the roster, then a generic label. |
 | `zone-created` | `{type, zone: Zone}` | Fanout **to everyone including the sender** — the echo is the create ack. |
 | `zone-removed` | `{type, id}` | |
-| `event` | `{type, kind, participantId, zoneId?, markerId?, at}` | `kind: 'entered' \| 'left' \| 'reached'`. `zoneId` for entered/left, `markerId` for reached. Ids may refer to zones/markers since removed. |
+| `event` | `{type, kind, participantId, name?, zoneId?, markerId?, targetName?, at}` | `kind: 'entered' \| 'left' \| 'reached'`. `zoneId` for entered/left, `markerId` for reached. Ids may refer to zones/markers since removed. `name` (actor display name) and `targetName` (zone or marker name) are **stamped by the server at event time** — participant ids are per-connection and zones can be deleted, so replayed history must depend on neither still existing; `targetName` is what keeps a welcome-replayed event legible after its zone is gone. Absent for anonymous actors / unnamed markers, and from a pre-0.2.2 server. Clients prefer the stamped values, fall back to roster/zone lookups, then a generic label. |
 | `expiry` | `{type, expiresAt}` | The owner extended the session. |
 | `expired` | `{type}` | Unchanged. |
 | `refused` | `{type, reason}` | Unchanged. |
@@ -70,7 +70,8 @@ ChatMessage   = { id, participantId, name?, avatar?,       // id, at server-assi
                   text, at }                                // name/avatar stamped at send time
 Zone          = { id, name, center: Position, radiusM,
                   createdBy, createdAt }                    // createdBy/At server-stamped
-LiveEvent     = { kind, participantId, zoneId?, markerId?, at }
+LiveEvent     = { kind, participantId, name?, zoneId?,     // name/targetName stamped
+                  markerId?, targetName?, at }              // at event time
 ```
 
 `LiveParticipant` gains: `joinedAt`, `lastSeenAt` (ISO, server clock —
@@ -198,8 +199,29 @@ Body `{subscription}` (a standard `PushSubscription.toJSON()`:
 **Push triggers** (send order of value): a dispatcher resolved your code
 ("an operator has your position"); zone/marker events; a participant joined
 your share; chat while backgrounded; session nearing expiry (pairs with
-extend — "expiring in 5 min, extend?"). Payloads carry *that* something
-happened and which session — never positions, chat bodies or zone names.
+extend — "expiring in 5 min, extend?").
+
+**Payload privacy basis** (revised from "generic by design"): Web Push
+payloads are **end-to-end encrypted (RFC 8291**, aes128gcm against the
+subscription's `p256dh`/`auth` keys**)** — the Apple/Google/Mozilla push
+services relay ciphertext they cannot read. Names and short chat snippets in
+payloads are therefore fine. **Precise coordinates still stay out**, as
+defence-in-depth: a payload's end state is a lock screen. When the actor has
+a name the bodies are rich; **actors with no name keep the generic bodies**
+(`Someone joined your share.` / `New message on your share.` /
+`Activity on your share.`):
+
+| trigger | body | url |
+|---|---|---|
+| chat | `<Name>: <first ~100 chars>` | `lookup?code=<code>#chat` |
+| zone event | `<Name> entered <Zone>` / `<Name> left <Zone>` | `lookup?code=<code>#activity` |
+| marker reached | `<Name> reached <Marker>` | `lookup?code=<code>#activity` |
+| joined | `<Name> joined your share` | `lookup?code=<code>#people` |
+
+`url` is **relative** — the service worker resolves it against its own
+location (so the GitHub Pages base needs no special-casing) and the client
+opens the panel the fragment names. Notification icons are a client /
+service-worker concern — never payload fields.
 
 All three endpoints are in `openapi.yaml` (`npm run validate:openapi` passes).
 

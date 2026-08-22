@@ -156,8 +156,14 @@ export interface ChatMessage {
 /**
  * A named circle on the world — the existing circle tool, given a name and
  * made a first-class object instead of sketch ink. Zones are session-level
- * and shared: any participant may create or remove one (the POC write
- * posture). `createdBy` and `createdAt` are server-stamped.
+ * and shared: any participant may CREATE one. REMOVAL is restricted
+ * (superseding the original any-participant POC posture): the server
+ * honours a `zone-remove` only from the zone's creator — matched by
+ * participantId, the best stable identity a connection has, so an
+ * anonymous creator who reconnects loses remove rights on their own zone
+ * (stated plainly; POC-honest) — or from the session owner. An
+ * unauthorised remove is dropped silently, no error frame. `createdBy` and
+ * `createdAt` are server-stamped.
  */
 export interface Zone {
   /** Client-generated id, same rule as marker ids — see `isValidLiveId`. */
@@ -179,12 +185,25 @@ export type LiveEventKind = 'entered' | 'left' | 'reached';
  * One detection outcome, emitted by the server under the hysteresis
  * contract above. `zoneId` is present for 'entered'/'left', `markerId` for
  * 'reached'; ids may refer to zones or markers since removed.
+ *
+ * `name` and `targetName` are stamped by the server AT EVENT TIME — the
+ * actor's display name and the zone or marker name — for the same reason
+ * ChatMessage carries a stamp: participant ids are per-connection and zones
+ * can be deleted, so replayed history must depend on neither still
+ * existing. All optional: an anonymous actor has no `name`, an unnamed
+ * marker no `targetName`, and a pre-0.2.2 server stamps neither. Clients
+ * prefer the stamped values, fall back to roster/zone lookups, then a
+ * generic label. Zone and marker names are user content — never logged.
  */
 export interface LiveEvent {
   kind: LiveEventKind;
   participantId: string;
+  /** Actor's display name at event time. Absent for anonymous actors. */
+  name?: string;
   zoneId?: string;
   markerId?: string;
+  /** Zone or marker name at event time. Absent for unnamed markers. */
+  targetName?: string;
   /** ISO 8601, server clock. */
   at: string;
 }
@@ -216,6 +235,7 @@ export type LiveClientMessage =
   | { type: 'chat'; text: string }
   /** Create a zone. `createdBy`/`createdAt` are stamped by the server. */
   | { type: 'zone-create'; id: string; name: string; center: Position; radiusM: number }
+  /** Remove a zone — honoured for its creator or the session owner only. */
   | { type: 'zone-remove'; id: string };
 
 export type LiveRefusalReason = 'not-found' | 'not-live' | 'room-full' | 'bad-message';
@@ -250,7 +270,7 @@ export type LiveServerMessage =
   | { type: 'zone-created'; zone: Zone }
   | { type: 'zone-removed'; id: string }
   /** One detection outcome — the fields of `LiveEvent`, flattened. */
-  | { type: 'event'; kind: LiveEventKind; participantId: string; zoneId?: string; markerId?: string; at: string }
+  | { type: 'event'; kind: LiveEventKind; participantId: string; name?: string; zoneId?: string; markerId?: string; targetName?: string; at: string }
   /** The owner extended the session; everyone learns the new expiry. */
   | { type: 'expiry'; expiresAt: string }
   | { type: 'expired' }
