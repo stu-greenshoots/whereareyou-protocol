@@ -22,6 +22,12 @@ D1 D2 D3 D4 D6 · E2 E4
 logo/identity, GPS accuracy refinement + poor-fix prompt, zoom-based manual-pin
 accuracy, the locate-me control, scroll-to-top on mint.
 
+**Accounts & saved maps (22 Aug evening)** — optional accounts (local by
+default, server-backed by choice), named map saving from every surface, a
+profile drawer, and avatar map markers. Record:
+[`specs/accounts-build-plan.md`](specs/accounts-build-plan.md). Built and
+verified locally; not yet deployed.
+
 **C1 (PWA) — DONE.** Manifest, icons, favicon, and now the service worker:
 the shell (HTML/JS/CSS/fonts/icons, ~600 KB, 17 entries) is precached, so the
 app installs to a home screen and opens with no signal. Offline, a failed mint
