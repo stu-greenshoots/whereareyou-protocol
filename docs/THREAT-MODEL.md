@@ -443,3 +443,23 @@ Anyone claiming to replace AML is selling something. See `docs/COMPARISON.md`.
 | Store timing side channel on `404` | Unmeasured; open |
 | `liveSessions` discloses `N` | Accepted; drop the field if unwanted |
 | Voice channel unprotected | Out of scope for any protocol |
+
+
+---
+
+## Live rooms (22 Aug 2026) — accepted-for-POC exposures, deliberately open
+
+Multi-party live sessions shipped as a POC with these KNOWN exposures,
+deferred on purpose (source: `specs/live-sessions-build-plan.md` §5), so
+that deferral never becomes forgetting:
+
+1. **The code now grants presence and write access**, not just read — anyone
+   holding it can join the room, appear as a participant, draw, and place
+   markers. Future: owner approval of joins, per-participant tokens.
+2. **Nothing binds a joiner to an identity** — any joiner can claim any name
+   and any position; pins other than the owner's are unauthenticated claims.
+3. **Enumeration now finds rooms, not just positions** — the WS upgrade path
+   needs to join the rate-limit story.
+4. **Room state is single-instance, in-memory** — fine on one Render node,
+   breaks on scale-out.
+5. **No abuse controls on drawings/markers beyond size and rate caps.**

@@ -7,7 +7,15 @@ drawings, in real time over WebSockets. Stu's framing, 22 Aug 2026: this is a
 POC — the security consequences are real, known, and deliberately deferred
 (§7 keeps the register, so deferral never becomes forgetting).
 
-Status: **planned.** Decisions D1–D5 below have recommendations.
+Status: **SHIPPED, 22 Aug 2026** — all five decisions as recommended, plus
+post-plan additions driven by phone testing: the owner holds a headless room
+connection whenever their code screen is open (viewers always see a live
+owner; the PATCH streamer is retired — the socket is the one writer);
+sessions and rooms carry a **marked spot** (position + icon from
+MARKER_ICONS, placed by tap on the share screen, tool-only in the room,
+icon picked by tapping the diamond); drawings and markers persist through
+reloads via the on-device active-share record and are re-announced on
+connect. §5's register was copied into THREAT-MODEL.md as open items.
 
 ---
 
