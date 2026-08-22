@@ -29,8 +29,10 @@ Stu: D1 both variants, D2 no web test runner for v1 (rationale below), D3 yes.
   look-up maps gained a full-screen mode and a viewer-locate control (a
   neutral dot for the resolver's own position — never the pin).
 - **SHIPPED, 22 Aug 2026.** Render api deploy landed (root cause of the
-  delay: the service has auto-deploy OFF — every deploy is manual from the
-  dashboard; now recorded in the workspace CLAUDE.md). Live sketch
+  delay: the service is set to deploy-on-commit but the push never triggered
+  a build — webhook not firing; deploy went out manually, and a deploy hook
+  for next time is recorded in the workspace guide, outside the public
+  repos). Live sketch
   round-trip verified against production, web deployed per DEPLOY.md, live
   bundle confirmed to carry the feature. Post-trial additions shipped with
   it: full-screen mode on the drawing and look-up maps, and a viewer-locate
