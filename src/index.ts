@@ -23,6 +23,18 @@ export {
   parseOffline,
 } from './offline.js';
 export type { OfflineParseFailure, OfflineParseResult, OfflinePosition } from './offline.js';
+export {
+  MAX_PEN_POINTS,
+  MAX_SKETCH_CHARS,
+  MAX_SKETCH_SHAPES,
+  SKETCH_VERSION,
+  decodeSketch,
+  encodeSketch,
+  isValidSketchPayload,
+  simplifyStroke,
+  sketchBounds,
+} from './sketch.js';
+export type { Sketch, SketchColour, SketchPoint, SketchShape } from './sketch.js';
 export { interpretCode } from './interpret.js';
 export type { InterpretFailure, Interpretation } from './interpret.js';
 export type * from './types.js';

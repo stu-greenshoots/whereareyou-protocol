@@ -623,6 +623,17 @@ components:
             Free-text from the sharer, e.g. "third floor, back stairwell".
             Silently truncated to 280 characters rather than rejected — a note
             that is too long should not cost someone their emergency call.
+        sketch:
+          type: string
+          maxLength: 4096
+          pattern: '^[A-Za-z0-9_-]+$'
+          description: |
+            Opaque encoded drawing (`sketch.ts` in the protocol package). The
+            resolver checks length and charset only — it never decodes a
+            sketch, stores it verbatim, and returns it byte-for-byte on
+            resolve. Invalid or oversized sketches are dropped silently and
+            the session is still created — a malformed sketch must never cost
+            someone their code.
 
     CreateSessionResponse:
       type: object
@@ -668,6 +679,12 @@ components:
           $ref: '#/components/schemas/SessionSubject'
         note:
           type: string
+        sketch:
+          type: string
+          description: |
+            The sharer's drawing, exactly as their device sent it. Opaque to
+            the resolver; decode with the protocol package and treat a failed
+            decode as "no sketch" — never let a bad sketch cost the position.
         createdAt:
           type: string
           format: date-time
@@ -703,6 +720,15 @@ components:
           description: The secret returned at mint time.
         position:
           $ref: '#/components/schemas/Position'
+        sketch:
+          type: string
+          maxLength: 4096
+          pattern: '^[A-Za-z0-9_-]+$'
+          description: |
+            When present, replaces the stored sketch — a caller adding an
+            arrow after the code is already out. Same validation and
+            silent-drop semantics as minting; an invalid sketch never blocks
+            the position update.
 
     RevokeSessionRequest:
       type: object

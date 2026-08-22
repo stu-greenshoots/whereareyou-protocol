@@ -42,6 +42,12 @@ export interface CreateSessionRequest {
   ttlSeconds?: number;
   /** Free-text note from the sharer, e.g. "third floor, back stairwell". */
   note?: string;
+  /**
+   * Opaque encoded drawing (see `sketch.ts`). Resolvers store and return it
+   * verbatim and are not expected to interpret it. Invalid or oversized
+   * sketches are dropped silently — never a reason to refuse the mint.
+   */
+  sketch?: string;
 }
 
 export interface CreateSessionResponse {
@@ -64,6 +70,8 @@ export interface ResolvedSession {
   mode: SessionMode;
   subject: SessionSubject;
   note?: string;
+  /** The sharer's drawing, exactly as their device sent it. Opaque here. */
+  sketch?: string;
   createdAt: string;
   updatedAt: string;
   expiresAt: string;
@@ -73,6 +81,12 @@ export interface ResolvedSession {
 
 export interface UpdatePositionRequest {
   position: Position;
+  /**
+   * When present, replaces the stored sketch — a caller adding an arrow after
+   * the code is already out. Same validation and silent-drop semantics as
+   * minting; an invalid sketch never blocks the position update.
+   */
+  sketch?: string;
 }
 
 /**
