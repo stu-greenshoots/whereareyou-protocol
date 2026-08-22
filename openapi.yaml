@@ -640,6 +640,10 @@ components:
             A spot the sharer MARKED — "the incident is here" — as opposed to
             `position`, which is where they are. Invalid markers are dropped
             silently; never a reason to refuse the request.
+        markerIcon:
+          type: string
+          enum: [spot, warning, flag, cross, car, house]
+          description: What the marked spot is. Unknown values are dropped.
 
     CreateSessionResponse:
       type: object
@@ -694,6 +698,9 @@ components:
         marker:
           $ref: '#/components/schemas/Position'
           description: The spot the sharer marked — not where they are.
+        markerIcon:
+          type: string
+          description: What the marked spot is.
         createdAt:
           type: string
           format: date-time
@@ -744,6 +751,10 @@ components:
             A spot the sharer MARKED — "the incident is here" — as opposed to
             `position`, which is where they are. Invalid markers are dropped
             silently; never a reason to refuse the request.
+        markerIcon:
+          type: string
+          enum: [spot, warning, flag, cross, car, house]
+          description: What the marked spot is. Unknown values are dropped.
 
     RevokeSessionRequest:
       type: object

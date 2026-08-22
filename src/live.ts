@@ -1,6 +1,7 @@
 import { parseCode } from './code.js';
 import { isValidSketchPayload } from './sketch.js';
-import type { Position } from './types.js';
+import { MARKER_ICONS } from './types.js';
+import type { MarkerIcon, Position } from './types.js';
 
 /**
  * LIVE ROOMS — a session as a place people are, not just a record.
@@ -35,6 +36,7 @@ export interface LiveParticipant {
    * one is a claim about the world, the other is a live fix.
    */
   marker?: Position;
+  markerIcon?: MarkerIcon;
   updatedAt: string;
 }
 
@@ -46,7 +48,7 @@ export type LiveClientMessage =
   | { type: 'hello'; code: string; name?: string; updateToken?: string; share: boolean }
   | { type: 'position'; position: Position }
   /** Place (or with null, clear) this participant's single placed marker. */
-  | { type: 'marker'; position: Position | null }
+  | { type: 'marker'; position: Position | null; icon?: MarkerIcon }
   | { type: 'sketch'; sketch: string };
 
 export type LiveRefusalReason = 'not-found' | 'not-live' | 'room-full' | 'bad-message';
@@ -123,6 +125,10 @@ export function parseLiveClientMessage(raw: string): LiveClientMessage | null {
   }
 
   if (message['type'] === 'position' || message['type'] === 'marker') {
+    const icon =
+      typeof message['icon'] === 'string' && (MARKER_ICONS as readonly string[]).includes(message['icon'])
+        ? (message['icon'] as MarkerIcon)
+        : undefined;
     if (message['type'] === 'marker' && message['position'] === null) {
       return { type: 'marker', position: null };
     }
@@ -136,7 +142,9 @@ export function parseLiveClientMessage(raw: string): LiveClientMessage | null {
       ...(typeof p.source === 'string' ? { source: p.source } : {}),
       ...(typeof p.takenAt === 'string' ? { takenAt: p.takenAt } : {}),
     } as Position;
-    return message['type'] === 'position' ? { type: 'position', position } : { type: 'marker', position };
+    return message['type'] === 'position'
+      ? { type: 'position', position }
+      : { type: 'marker', position, ...(icon !== undefined ? { icon } : {}) };
   }
 
   if (message['type'] === 'sketch') {

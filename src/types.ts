@@ -54,7 +54,17 @@ export interface CreateSessionRequest {
    * invalid markers are dropped silently, never a reason to refuse the mint.
    */
   marker?: Position;
+  /** What the marked spot IS — one of MARKER_ICONS. Unknown values dropped. */
+  markerIcon?: MarkerIcon;
 }
+
+/**
+ * The vocabulary of marked spots. Small on purpose: each one must read at
+ * 12px inside a diamond, on a phone, outdoors. Renderers fall back to a
+ * plain spot for anything they do not recognise.
+ */
+export const MARKER_ICONS = ['spot', 'warning', 'flag', 'cross', 'car', 'house'] as const;
+export type MarkerIcon = (typeof MARKER_ICONS)[number];
 
 export interface CreateSessionResponse {
   code: string;
@@ -80,6 +90,7 @@ export interface ResolvedSession {
   sketch?: string;
   /** The spot the sharer marked — somewhere they pointed at, not where they are. */
   marker?: Position;
+  markerIcon?: MarkerIcon;
   createdAt: string;
   updatedAt: string;
   expiresAt: string;
@@ -97,6 +108,7 @@ export interface UpdatePositionRequest {
   sketch?: string;
   /** When present, replaces the stored marked spot. Same silent-drop rule. */
   marker?: Position;
+  markerIcon?: MarkerIcon;
 }
 
 /**

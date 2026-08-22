@@ -49,4 +49,5 @@ export type {
 } from './live.js';
 export { interpretCode } from './interpret.js';
 export type { InterpretFailure, Interpretation } from './interpret.js';
+export { MARKER_ICONS } from './types.js';
 export type * from './types.js';
