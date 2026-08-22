@@ -31,6 +31,11 @@ falls through to the offline codec, so the whole no-signal path is coherent.
 
 ## Plan going forward
 
+> **Unticketed ideas live in [`IDEAS.md`](IDEAS.md)** — 11 from Stu on
+> 22 Aug (chat, zones/arrival tracking, routes, push, compass, extend, map
+> upgrade, …), each thought through against the code but deliberately not
+> scheduled. Graduate them into tiers here when picked up.
+
 ### Tier 1 — finish "truly usable" (NEXT — do these first)
 
 Both are in `whereareyou-web`. Deploy after: see `whereareyou-web/DEPLOY.md`
