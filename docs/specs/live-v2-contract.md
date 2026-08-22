@@ -51,7 +51,7 @@ with `parseLiveClientMessage` — null means drop the frame, nothing else.
 | `welcome` | `{type, participantId, expiresAt, roster, chat, zones, events}` | `chat`/`zones`/`events` are the retained history; a v2 server always sends them (possibly `[]`), clients treat absence as empty. |
 | `participant` | `{type, participant}` | Whole participant, not a diff. No `trail` here — welcome only. |
 | `left` | `{type, participantId}` | |
-| `chat` | `{type, id, participantId, text, at}` | Fanout of one `ChatMessage`. `id`/`at` server-assigned. |
+| `chat` | `{type, id, participantId, name?, avatar?, text, at}` | Fanout of one `ChatMessage`. `id`/`at` server-assigned. `name`/`avatar` are the sender's identity **stamped by the server at send time** from their hello (absent for anonymous senders, and from a pre-0.2.1 server) — participant ids are per-connection, so history must not depend on roster liveness. Clients prefer the stamped `name`, fall back to the roster, then a generic label. |
 | `zone-created` | `{type, zone: Zone}` | Fanout **to everyone including the sender** — the echo is the create ack. |
 | `zone-removed` | `{type, id}` | |
 | `event` | `{type, kind, participantId, zoneId?, markerId?, at}` | `kind: 'entered' \| 'left' \| 'reached'`. `zoneId` for entered/left, `markerId` for reached. Ids may refer to zones/markers since removed. |
@@ -66,7 +66,8 @@ arrives; because creates echo to the sender, the sender can tell.
 
 ```ts
 SessionMarker = { id, position: Position, icon: MarkerIcon, name? }
-ChatMessage   = { id, participantId, text, at }            // id, at server-assigned
+ChatMessage   = { id, participantId, name?, avatar?,       // id, at server-assigned;
+                  text, at }                                // name/avatar stamped at send time
 Zone          = { id, name, center: Position, radiusM,
                   createdBy, createdAt }                    // createdBy/At server-stamped
 LiveEvent     = { kind, participantId, zoneId?, markerId?, at }

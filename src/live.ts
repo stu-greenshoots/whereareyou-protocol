@@ -129,10 +129,25 @@ export interface LiveParticipant {
  * server-assigned. Bodies are user content: rendered as plain text, capped
  * at MAX_CHAT_TEXT_CHARS, and NEVER logged — the audit posture excludes a
  * content field by construction, the same trick as positions.
+ *
+ * `name` and `avatar` are the sender's identity AS OF SEND TIME, stamped by
+ * the server from what the sender presented at hello — because participant
+ * ids are per-connection, a roster lookup goes stale the moment the sending
+ * connection closes, and retained history must not depend on roster
+ * liveness. Both are optional: an anonymous sender has neither, and a v2.0
+ * server stamps neither. Clients prefer the stamped `name`, fall back to the
+ * roster, then to a generic label. The values obey the hello rules — `name`
+ * ≤ MAX_LIVE_NAME_CHARS, `avatar` the avatar rule and MAX_AVATAR_CHARS —
+ * because they are copies of fields already sanitised at hello. Never
+ * logged, like the body.
  */
 export interface ChatMessage {
   id: string;
   participantId: string;
+  /** Sender's display name at send time. Absent for anonymous senders. */
+  name?: string;
+  /** Sender's avatar data URL at send time — see MAX_AVATAR_CHARS. */
+  avatar?: string;
   text: string;
   /** ISO 8601, server clock. */
   at: string;
@@ -231,7 +246,7 @@ export type LiveServerMessage =
   | { type: 'participant'; participant: LiveParticipant }
   | { type: 'left'; participantId: string }
   /** One chat message — the fields of `ChatMessage`, flattened. */
-  | { type: 'chat'; id: string; participantId: string; text: string; at: string }
+  | { type: 'chat'; id: string; participantId: string; name?: string; avatar?: string; text: string; at: string }
   | { type: 'zone-created'; zone: Zone }
   | { type: 'zone-removed'; id: string }
   /** One detection outcome — the fields of `LiveEvent`, flattened. */
