@@ -9,8 +9,20 @@ ordered sequence with done-gates, the full test plan, and the A/B variants for
 the phone trial. **Build with both docs open** — design detail there, order and
 gates here.
 
-Status: **in build.** Decisions D1–D3 taken by Stu, 2026-08-22: D1 both
-variants, D2 no web test runner for v1 (rationale recorded below), D3 yes.
+Status: **built to the phone gate, 2026-08-22.** Decisions D1–D3 taken by
+Stu: D1 both variants, D2 no web test runner for v1 (rationale below), D3 yes.
+
+- **Phase 1 ✅** — codec + contract + 24 tests on protocol `main` (`b4698fe`).
+- **Phase 2 ✅** — api `main` (`8513169`): store/routes/PATCH, 11 new tests
+  (62 green against real Redis), README note, pin refreshed to `b4698fe`.
+  Render deploy triggered by the push; verify a live mint-with-sketch
+  resolves it back before deploying web.
+- **Phase 3 code-complete** — web branch `sketch-drawing` (`ae8b820`):
+  everything in S7–S11 including both D1 variants behind `?tools=`.
+  Typecheck + production build green; local end-to-end verified (sketch →
+  local api → Redis → console resolve, byte-identical). **Waiting on the
+  phone gate (§3.4) — do not deploy web before it.**
+- **Phase 4–5** — not started. Phone trial next.
 
 ---
 
