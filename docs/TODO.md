@@ -79,6 +79,44 @@ a real phone where possible; the UI can't be seen from the CLI.
 - [ ] Publish the **comparison** (vs AML / w3w / Plus Codes) as a public page,
       with the measured Plus Code typo data.
 
+### Word codes — a memorable sentence for the OFFLINE code (22 Jul)
+
+**Decision:** the **offline** code becomes a short, memorable **sentence**; the
+**live/share** code stays exactly as it is (8-char + NATO — like a postcode).
+**The live app path is untouched.** Full design + status + handoff:
+**`docs/WORD-CODES.md`** (read its "Status & handoff" first).
+
+**Current direction — UK 5-word headline sentence** ("Orderly lark sweeps full
+pedestal"): UK-scoped, ~3m, 100% error detection. Verified. Working map demo in
+`prototype/uk-sentence/` (serve it → localhost:8899).
+
+- [x] **Codec mechanism** — done + verified. NOTE: `src/sentence.ts` on this
+      branch is the *earlier* global ~6-word grammatical version (too long, ~12
+      spoken words — **superseded**, tests still pass). The current UK 5-word
+      codec lives in `prototype/uk-sentence/uk-codec.js` (round-trip clean, 100%
+      single-word detection). Porting it into `src/` is part of the next work.
+- [ ] **Word-list quality pass — NEXT.** Auto-curated words are still awkward
+      ("Adrenal winery pulls balmy stewpot"). Make them clean/concrete/neutral.
+      Lists + criteria + constraints + data sources: `prototype/uk-sentence/README.md`.
+- [ ] **Port the UK 5-word codec into `src/`** (replacing the superseded version)
+      once the words are good.
+- [ ] **Read-aloud trial** — protocol drafted (`docs/WORD-CODES-TRIAL.md`); needs
+      real voices. The make-or-break test code can't run for us.
+- [ ] **Wire into the offline screen only** (sentence leads; letters/lat-long
+      demoted). Live screen unchanged. Touches web + deploy — hold for sign-off.
+- [ ] **(Later) Global via a leading region word** — one extra word, strict
+      superset of the UK build. See `docs/WORD-CODES.md`.
+
+### Parked ideas (revisit later)
+
+- **Draw-on-map annotations for the SHARE code.** Let the sharer sketch on their
+  map — the entrance, an arrow, the route from the nearest station — and have it
+  ride along with the session so the dispatcher sees it on resolve. Natural fit:
+  the share code is a *pointer to a server record*, so a drawing is just more data
+  in that record — no impact on code length, and it's a capability only the
+  online code can have (an offline code *is* the location, it can't carry a
+  route). Addresses a real gap: a pin says *where*, not *how to get in*. (Stu, 22 Jul.)
+
 ---
 
 ## Recommended next step
@@ -86,3 +124,6 @@ a real phone where possible; the UI can't be seen from the CLI.
 Tier 1's two small fixes (captive-portal probe, dispatcher offline prop) close
 out the offline story cleanly, then Tier 2's redaction/audit is the thing to do
 before this is shown as anything more than a tester.
+
+Parallel track now in flight: the **offline word/sentence code** — start with the
+word-list curation (`docs/WORD-CODES.md`).
