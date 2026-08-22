@@ -22,7 +22,15 @@ Stu: D1 both variants, D2 no web test runner for v1 (rationale below), D3 yes.
   Typecheck + production build green; local end-to-end verified (sketch →
   local api → Redis → console resolve, byte-identical). **Waiting on the
   phone gate (§3.4) — do not deploy web before it.**
-- **Phase 4–5** — not started. Phone trial next.
+- **Phase 4 ✅** — trial run on a real phone: **toggle wins.** Palette variant
+  and the `?tools=` switch deleted (web `sketch-drawing`).
+- **Phase 5** — design doc moved to `protocol/docs/map-drawing-plan.md`, web
+  plan branch retired. Post-trial additions from Stu, same branch: the
+  look-up maps gained a full-screen mode and a viewer-locate control (a
+  neutral dot for the resolver's own position — never the pin).
+- **Remaining:** confirm the Render api deploy actually picked up `8513169`
+  (it had not, 40 minutes after the push — check the dashboard), Stu
+  re-eyeballs the console additions on LAN, then deploy web per DEPLOY.md.
 
 ---
 
@@ -82,7 +90,7 @@ before writing this. All of these hold:
 The build order below is unchanged whichever way these go. Recommendations
 first.
 
-### D1 — Toolbar interaction model → **DECIDED: build both, phone trial decides**
+### D1 — Toolbar interaction model → **RESOLVED: toggle won the phone trial**
 
 The one genuinely unclear UX question: how does drawing mode engage?
 
