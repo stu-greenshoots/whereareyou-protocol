@@ -1,5 +1,15 @@
 # Idea backlog
 
+> **Status, 22 Aug 2026 (evening): built and deployed.** The whole backlog
+> below went from "deliberately not built" to shipped in one supervised run —
+> accounts landed first (`specs/accounts-build-plan.md`), then the rest as the
+> batched **live-v2** release. Wire contract: `specs/live-v2-contract.md`;
+> build record — commit chain, what the integration pass actually verified,
+> and the honest open-items list — `specs/live-v2-build-record.md`. One idea
+> was **rejected**, not built (10's restart-same-code; decision in
+> THREAT-MODEL.md). The original thinking is kept intact below; each idea now
+> carries a dated status line.
+
 Captured 2026-08-22 from Stu, **thought through but deliberately not built**.
 Nothing here is ticketed or scheduled; when one graduates, it moves into
 `TODO.md` (and probably gets a spec in `specs/`). Grounded against the code as
@@ -19,6 +29,13 @@ bottom — read those before estimating anything.
 ---
 
 ## 1. Chat in live shares
+
+> **22 Aug 2026: SHIPPED.** Wire type in protocol `115151d`; server keeps the
+> 50-message ring with late-joiner replay (api `ad51962`); web has the
+> composer with optimistic-send dedupe, an unread badge, a transient bubble
+> over the sender's marker, and a read-only panel on the dispatcher console
+> (`b9d90b6`+`5ab88d0`). Both directions plus replay verified against the
+> real stack.
 
 **The ask.** Participants in a live share can chat. A chat-bubble button opens
 a composer; a sent message shows a small icon over the sender's marker;
@@ -49,6 +66,13 @@ THREAT-MODEL.md needs a paragraph.
 
 ## 2. Proper installed-app experience
 
+> **22 Aug 2026: SHIPPED — phone eyeball owed.** iOS splash: 17 generated
+> portrait PNGs + link tags, and the offline gating audit landed — online-only
+> affordances withheld behind quiet notes while offline mint + lookup stay
+> first-class (web `f2898af`). The SW moved generateSW→injectManifest with the
+> CARTO tile cache ported (`1f6888d`). Splash and gating on a real network
+> drop still need a real phone.
+
 **The ask.** Installs as a full app, real offline capability, opens full-page
 with a splash screen; offline it offers only the offline codes and offline
 lookup.
@@ -76,6 +100,13 @@ offline-tiles answer entirely.
 ---
 
 ## 3. Participant history, zones, and arrival events
+
+> **22 Aug 2026: SHIPPED.** Zones, events and participant metadata on the
+> wire (`115151d`); the enter/leave/reached hysteresis engine server-side
+> (api `ad51962`); named zones via the circle tool with ack reconcile, an
+> activity feed, and user cards with joined/last-seen/accuracy + trails (web
+> `b9d90b6`+`5ab88d0` — which also fixed the dormant trail-removal bug).
+> Detection was wire-probed: exactly one entered/left/reached per contract.
 
 **The ask.** Track when each participant joined, was last seen, their accuracy
 over time; view it from a user side panel or by tapping the user. Named
@@ -115,6 +146,10 @@ idea 7 (zone events are the best push trigger in the whole list).
 
 ## 4. Bolder, more fun markers
 
+> **22 Aug 2026: SHIPPED.** Bold restyle — circle = person, diamond = claim,
+> colour-blind-safe throughout (web `b9d90b6`+`5ab88d0`); avatars ride
+> participant metadata on the wire and +8 `MARKER_ICONS` (`115151d`).
+
 **The ask.** Better marker design for both participants and placed markers —
 bold and fun.
 
@@ -136,6 +171,11 @@ light share map and the dark dispatcher console, colour-blind-safe
 
 ## 5. Marked spot must survive going live
 
+> **22 Aug 2026: SHIPPED — and "measure first" paid.** The measured root
+> cause: the hand-placed pin's *stored position* was being overwritten by the
+> live GPS fix on go-live. The fix promotes a placed pin to a marked spot
+> before the share follows the caller (web `1285b5f`).
+
 **The ask.** Mark a spot you're *not* at, then start a live share — the share
 follows your current location and the marked spot is lost. It should persist
 as a marker.
@@ -152,6 +192,12 @@ change once the actual behaviour is pinned down.
 ---
 
 ## 6. Multiple markers and routes
+
+> **22 Aug 2026: SHIPPED (markers), route UI not built.** `markers[]` up to
+> 20 with icon + name, full-list replace, legacy `marker` mirrored on both
+> REST and WS (`115151d`, api `ad51962`, web `b9d90b6`+`5ab88d0`; replace +
+> mirror verified via curl). The checkpoint story exists as markers plus
+> idea 3's reached events; there is no dedicated ordered-route UI.
 
 **The ask.** Allow several markers per share. Opens up marking a **route**
 and watching people progress along it.
@@ -174,6 +220,16 @@ refresh instead of three.
 ---
 
 ## 7. Push notifications
+
+> **22 Aug 2026: BUILT — delivery unproven.** VAPID persisted in Redis with
+> an env override, subscriptions stored with the session's TTL (so structural
+> expiry holds by construction), resolve-notification + T-5min expiry warning
+> (api `f40d7a9`); joined/activity/chat pushes with a 60s per-kind throttle
+> (`ad51962`); hand-authored SW with push + notificationclick handlers and a
+> Notify-me affordance, permission asked on tap only (web `1f6888d`).
+> Subscribe/storage/trigger paths are tested; **real end-to-end delivery is
+> not — it needs a phone.** The throttles and expiry-warning timers are
+> in-memory and die on an api restart (documented POC posture).
 
 **The ask.** Allow push notifications.
 
@@ -199,6 +255,10 @@ piggybacked on the keepalive ping is the cheap version.
 
 ## 8. "Open in maps"
 
+> **22 Aug 2026: PARTIAL.** The single-point case shipped — an OpenInMaps
+> component on both the share screen and the console (web `1285b5f`). The
+> multi-pin answer (GPX/KML export, waypoint links) was not built.
+
 **The ask.** For plain shares, open the location in a maps app. For live
 shares, ideally a link that opens *all* the markers.
 
@@ -221,6 +281,13 @@ shares, ideally a link that opens *all* the markers.
 ---
 
 ## 9. Compass view
+
+> **22 Aug 2026: SHIPPED — phone eyeball owed.** Full-screen rose from the
+> live bar, iOS permission-on-tap, `webkitCompassHeading` / absolute-alpha,
+> low-pass smoothing, participants + markers at bearings with distances,
+> desktop north-up fallback (web `1fb67d1`). Real heading and the iOS
+> permission flow still need a real phone. Known cosmetic niggle: labels
+> overlap when a person stands exactly on a marker.
 
 **The ask.** A full-screen compass showing participants and markers as
 bearings, live-rotating as the user turns.
@@ -245,6 +312,14 @@ coherent. Needs real-phone eyeballing more than anything else in this list.
 ---
 
 ## 10. Extend a session; restart an expired one
+
+> **22 Aug 2026: extend SHIPPED; restart-same-code REJECTED.** Extend
+> endpoint `{updateToken, addMinutes 1..180}` with a 24h cumulative cap and
+> expiry fanout to the room (api `f40d7a9`, protocol `115151d`); +30m/+1h/+3h
+> on the owner's code screen with a countdown and a clamp message (web
+> `586af05`). Verified moving both countdowns live. Restart-same-code was
+> rejected exactly as argued below — decision recorded in THREAT-MODEL.md
+> (`80c3519`); resume-with-fresh-code already covers the story.
 
 **The ask.** The share owner can extend a running session. After expiry, let
 them restart it **with the same code** — maybe only for logged-in users.
@@ -272,6 +347,10 @@ appears, it's a THREAT-MODEL.md conversation first, not a feature ticket.
 ---
 
 ## 11. A nicer map
+
+> **22 Aug 2026: SHIPPED (step 1).** CARTO tiles — Voyager on the share
+> screen, Dark Matter on the console — landing on the existing visual split
+> (web `1285b5f`). Step 2 (MapLibre + vector tiles) not taken.
 
 **The ask.** The current map looks a bit nasty. Free alternatives?
 
