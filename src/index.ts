@@ -35,6 +35,18 @@ export {
   sketchBounds,
 } from './sketch.js';
 export type { Sketch, SketchColour, SketchPoint, SketchShape } from './sketch.js';
+export {
+  LIVE_PROTOCOL_VERSION,
+  MAX_LIVE_NAME_CHARS,
+  MAX_ROOM_PARTICIPANTS,
+  parseLiveClientMessage,
+} from './live.js';
+export type {
+  LiveClientMessage,
+  LiveParticipant,
+  LiveRefusalReason,
+  LiveServerMessage,
+} from './live.js';
 export { interpretCode } from './interpret.js';
 export type { InterpretFailure, Interpretation } from './interpret.js';
 export type * from './types.js';
