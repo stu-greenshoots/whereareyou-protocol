@@ -1,0 +1,10 @@
+{
+  "nouns": 1409,
+  "adjectives": 349,
+  "verbs": 549,
+  "nounsPrime": true,
+  "payloadBits": 36.46,
+  "ukGrid": "3m",
+  "frame": "[Adj] [noun] [verb] [adj] [checknoun]",
+  "listsSource": "curation/curate.mjs (hand-curated drop/add sets over Brysbaert+Warriner pools)"
+}
