@@ -77,6 +77,17 @@ describe('parseLiveClientMessage', () => {
     expect(message.position.lat).toBe(51.5);
   });
 
+  it('parses markers, including the null that clears one', () => {
+    expect(
+      parseLiveClientMessage(JSON.stringify({ type: 'marker', position: { lat: 51.5, lon: -0.1, accuracyM: 10 } })),
+    ).toMatchObject({ type: 'marker', position: { lat: 51.5 } });
+    expect(parseLiveClientMessage(JSON.stringify({ type: 'marker', position: null }))).toEqual({
+      type: 'marker',
+      position: null,
+    });
+    expect(parseLiveClientMessage(JSON.stringify({ type: 'marker', position: { lat: 99, lon: 0, accuracyM: 1 } }))).toBeNull();
+  });
+
   it('accepts only charset-valid sketches', () => {
     expect(parseLiveClientMessage(JSON.stringify({ type: 'sketch', sketch: 'AQAA' }))).toEqual({
       type: 'sketch',

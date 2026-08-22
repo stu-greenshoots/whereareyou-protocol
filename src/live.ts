@@ -29,6 +29,12 @@ export interface LiveParticipant {
   position?: Position;
   /** Encoded sketch payload (see `sketch.ts`). Opaque here, as everywhere. */
   sketch?: string;
+  /**
+   * A point this participant PLACED — "the entrance is here" — as opposed to
+   * `position`, which is where they ARE. The two must never be conflated:
+   * one is a claim about the world, the other is a live fix.
+   */
+  marker?: Position;
   updatedAt: string;
 }
 
@@ -39,6 +45,8 @@ export type LiveClientMessage =
    */
   | { type: 'hello'; code: string; name?: string; updateToken?: string; share: boolean }
   | { type: 'position'; position: Position }
+  /** Place (or with null, clear) this participant's single placed marker. */
+  | { type: 'marker'; position: Position | null }
   | { type: 'sketch'; sketch: string };
 
 export type LiveRefusalReason = 'not-found' | 'not-live' | 'room-full' | 'bad-message';
@@ -114,20 +122,21 @@ export function parseLiveClientMessage(raw: string): LiveClientMessage | null {
     };
   }
 
-  if (message['type'] === 'position') {
+  if (message['type'] === 'position' || message['type'] === 'marker') {
+    if (message['type'] === 'marker' && message['position'] === null) {
+      return { type: 'marker', position: null };
+    }
     if (!isValidPosition(message['position'])) return null;
     const p = message['position'];
     // Only the fields the wire promises — nothing smuggled through.
-    return {
-      type: 'position',
-      position: {
-        lat: p.lat,
-        lon: p.lon,
-        accuracyM: p.accuracyM,
-        ...(typeof p.source === 'string' ? { source: p.source } : {}),
-        ...(typeof p.takenAt === 'string' ? { takenAt: p.takenAt } : {}),
-      } as Position,
-    };
+    const position = {
+      lat: p.lat,
+      lon: p.lon,
+      accuracyM: p.accuracyM,
+      ...(typeof p.source === 'string' ? { source: p.source } : {}),
+      ...(typeof p.takenAt === 'string' ? { takenAt: p.takenAt } : {}),
+    } as Position;
+    return message['type'] === 'position' ? { type: 'position', position } : { type: 'marker', position };
   }
 
   if (message['type'] === 'sketch') {
