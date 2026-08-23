@@ -115,6 +115,19 @@ export interface LiveParticipant {
   /** ISO 8601, server clock — refreshed on every frame received from them. */
   lastSeenAt: string;
   /**
+   * ISO 8601, server clock — when this participant's connection closed.
+   * ABSENT MEANS CONNECTED. Since 0.2.3, disconnecting is not leaving: on
+   * socket close the server RETAINS the member in the roster with this
+   * stamped and fans out a `participant` update — NOT a `left`. `left` is
+   * reserved for genuine removal (owner supersession, a reconnect merging
+   * away its own disconnected entry, eviction, expiry). Clients render a
+   * participant carrying this as stale — greyed, at their last position,
+   * labelled "last connected <time>" — never as gone. Additive and
+   * tolerant: a pre-0.2.3 server never sends it, and old clients ignore it
+   * (unknown fields on known types are ignored — the tolerance rule).
+   */
+  disconnectedAt?: string;
+  /**
    * Recent fixes, oldest first, ≤ MAX_TRAIL_FIXES. Sent in the WELCOME
    * roster only, so a late joiner sees where people have been; omitted from
    * `participant` fanout to keep every later frame small. Entries missing a
@@ -262,8 +275,16 @@ export type LiveServerMessage =
       zones: Zone[];
       events: LiveEvent[];
     }
-  /** A participant joined or changed — the whole participant, not a diff. */
+  /**
+   * A participant joined or changed — the whole participant, not a diff.
+   * A disconnection arrives as one of these with `disconnectedAt` stamped,
+   * not as a `left` — see LiveParticipant.disconnectedAt.
+   */
   | { type: 'participant'; participant: LiveParticipant }
+  /**
+   * Genuine removal only — supersession, reconnect merge, eviction. A mere
+   * disconnection is a `participant` update instead, since 0.2.3.
+   */
   | { type: 'left'; participantId: string }
   /** One chat message — the fields of `ChatMessage`, flattened. */
   | { type: 'chat'; id: string; participantId: string; name?: string; avatar?: string; text: string; at: string }

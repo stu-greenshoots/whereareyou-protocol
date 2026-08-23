@@ -1,6 +1,6 @@
 {
   "name": "@whereareyou/protocol",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "Reference codec for the whereareyou location handover protocol — short, checksummed, phonetically-safe location codes for emergency dispatch",
   "license": "MIT",
   "author": "Stuart Haigh",

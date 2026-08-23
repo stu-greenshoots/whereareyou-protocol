@@ -329,6 +329,22 @@ describe('live v2 server messages', () => {
         type: 'participant',
         participant: { id: 'p-2', owner: false, joinedAt: '2026-08-22T12:01:00.000Z', lastSeenAt: '2026-08-22T12:01:00.000Z', updatedAt: '2026-08-22T12:01:00.000Z' },
       },
+      {
+        // A DISCONNECTED participant (0.2.3): retained in the roster with
+        // disconnectedAt stamped and fanned out as a participant update —
+        // never a 'left'. Absent means connected.
+        type: 'participant',
+        participant: {
+          id: 'p-3',
+          name: 'Sam',
+          owner: false,
+          position,
+          joinedAt: '2026-08-22T12:01:00.000Z',
+          lastSeenAt: '2026-08-22T12:05:00.000Z',
+          disconnectedAt: '2026-08-22T12:06:00.000Z',
+          updatedAt: '2026-08-22T12:05:00.000Z',
+        },
+      },
       { type: 'left', participantId: 'p-2' },
       { type: 'chat', ...chat },
       { type: 'zone-created', zone },
@@ -367,6 +383,7 @@ describe('live v2 server messages', () => {
     expect(messages.map(describeMessage)).toEqual([
       'welcome 1/1/1/1',
       'participant p-2',
+      'participant p-3',
       'left p-2',
       'chat c-1',
       'zone-created z-1',

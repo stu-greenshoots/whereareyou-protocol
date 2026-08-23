@@ -48,9 +48,9 @@ with `parseLiveClientMessage` — null means drop the frame, nothing else.
 
 | type | shape | notes |
 |---|---|---|
-| `welcome` | `{type, participantId, expiresAt, roster, chat, zones, events}` | `chat`/`zones`/`events` are the retained history; a v2 server always sends them (possibly `[]`), clients treat absence as empty. |
-| `participant` | `{type, participant}` | Whole participant, not a diff. No `trail` here — welcome only. |
-| `left` | `{type, participantId}` | |
+| `welcome` | `{type, participantId, expiresAt, roster, chat, zones, events}` | `chat`/`zones`/`events` are the retained history; a v2 server always sends them (possibly `[]`), clients treat absence as empty. The roster may carry **disconnected** members — see the disconnection rule below. |
+| `participant` | `{type, participant}` | Whole participant, not a diff. No `trail` here — welcome only. A **disconnection** arrives as one of these with `disconnectedAt` stamped (0.2.3) — see the disconnection rule below. |
+| `left` | `{type, participantId}` | **Genuine removal only** (0.2.3): owner supersession, a reconnect merging away its own disconnected entry, eviction of an over-cap disconnected entry. A mere socket close is a `participant` update, never a `left`. |
 | `chat` | `{type, id, participantId, name?, avatar?, text, at}` | Fanout of one `ChatMessage`. `id`/`at` server-assigned. `name`/`avatar` are the sender's identity **stamped by the server at send time** from their hello (absent for anonymous senders, and from a pre-0.2.1 server) — participant ids are per-connection, so history must not depend on roster liveness. Clients prefer the stamped `name`, fall back to the roster, then a generic label. |
 | `zone-created` | `{type, zone: Zone}` | Fanout **to everyone including the sender** — the echo is the create ack. |
 | `zone-removed` | `{type, id}` | |
@@ -77,7 +77,41 @@ LiveEvent     = { kind, participantId, name?, zoneId?,     // name/targetName st
 `LiveParticipant` gains: `joinedAt`, `lastSeenAt` (ISO, server clock —
 `lastSeenAt` refreshed on every frame received), `avatar?`, `markers?`, and
 `trail?` (welcome roster only: last 20 fixes, oldest first; a fix without
-`takenAt` is stamped with receipt time).
+`takenAt` is stamped with receipt time). 0.2.3 adds `disconnectedAt?` (ISO,
+server clock; **absent means connected**) — see the disconnection rule.
+
+---
+
+## Disconnecting is not leaving (0.2.3)
+
+A real two-person test found the flaw in the old model: the moment a
+companion's phone dropped its connection, they simply vanished from the
+share — no last position, no clue when they were last heard from. So:
+
+- **On socket close the server RETAINS the member** in the roster —
+  position, name, avatar, `joinedAt`, `lastSeenAt` intact — stamps
+  `disconnectedAt` (ISO, server clock) and fans out a **`participant`**
+  update, NOT a `left`.
+- **`left` is reserved for genuine removal**: owner supersession, a
+  reconnect merging away its own disconnected entry, eviction of an
+  over-cap disconnected entry.
+- **Reconnect merge**: a hello presenting the same identity the server
+  already keyed the member by (its hello `name`, for non-owners) supersedes
+  its own disconnected entry — the old entry is removed with a `left`, the
+  new connection joins as a fresh participant (identity continuity only;
+  nothing else is inherited server-side, and detection state starts from
+  the silent baseline as for any join). The roster shows one entry,
+  connected. Anonymous no-name hellos have no identity to merge on — they
+  accumulate as separate disconnected entries, bounded by a server-side cap
+  on retained disconnected members (oldest evicted with a `left`).
+- **Clients render** a participant carrying `disconnectedAt` as stale:
+  greyed, at their last position, labelled "last connected <time>" — never
+  as gone. Absence of the field means connected.
+- **Additive and tolerant** both ways: a pre-0.2.3 server never sends
+  `disconnectedAt` (its socket closes still fan out `left`, which clients
+  already handle); a pre-0.2.3 client ignores the unknown field and treats
+  the retained member as present at their last position — imperfect but
+  safe.
 
 **The id rule** (`isValidLiveId`, exported): 1–64 chars of `A-Z a-z 0-9 _ -`.
 Ids are client-generated (a UUID fits) and must be unique within the session —
