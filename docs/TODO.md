@@ -96,12 +96,14 @@ a real phone where possible; the UI can't be seen from the CLI.
       and the README's false claim still stands.)_
 - [ ] **Live-update failures are silently dropped** (`web/Share.tsx`) — a live
       session that loses signal mid-stream never reports it.
-- [ ] **Live third-party sessions mislabel on the console.** The stored
-      subject stays `third-party` while the position becomes the caller's
-      live fix, so the REPORTED banner mislabels what the operator is looking
-      at. Found during the live-v2 measurement pass; not yet fixed. Related
-      inconsistency: the owner pin is blue in the live room but amber on the
-      resolve screen.
+- [x] **Live third-party sessions mislabel on the console — FIXED 23 Aug**
+      by the marker-share redesign (Stu's spec: a different location is a
+      *named marker*, never a person pin). The code resolves to the marker;
+      going live flips subject `third-party`→`self` one-way on the upgrade
+      (api `46d7f79`) while the marker stays put, and the console banner now
+      describes the marker (web `ba2a74b`). Reproduced before fixing.
+      Still open from the original finding: the owner pin is blue in the
+      live room but amber on the resolve screen (cosmetic inconsistency).
 
 ### Tier 3 — depth features
 - [x] **B6 + D5 — live sessions** (moving casualty tracking) — shipped 22 Aug
