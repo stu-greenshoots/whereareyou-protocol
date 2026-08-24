@@ -13,7 +13,14 @@ import {
   isValidLiveId,
   parseLiveClientMessage,
 } from '../src/live.js';
-import type { ChatMessage, LiveEvent, LiveServerMessage, Zone } from '../src/live.js';
+import type {
+  ChatMessage,
+  LiveClientMessage,
+  LiveEvent,
+  LiveParticipant,
+  LiveServerMessage,
+  Zone,
+} from '../src/live.js';
 import { MARKER_ICONS, MAX_MARKER_NAME_CHARS, MAX_SESSION_MARKERS } from '../src/types.js';
 import type { Position, SessionMarker } from '../src/types.js';
 
@@ -33,6 +40,7 @@ describe('parseLiveClientMessage', () => {
           expect([
             'hello',
             'position',
+            'share',
             'marker',
             'markers',
             'sketch',
@@ -249,6 +257,37 @@ describe('parseLiveClientMessage: v2 messages', () => {
     expect(parseLiveClientMessage(JSON.stringify({ ...zone, radiusM: MAX_ZONE_RADIUS_M }))).not.toBeNull();
   });
 
+  it('parses the sharing switch in both directions', () => {
+    expect(parseLiveClientMessage(JSON.stringify({ type: 'share', share: false }))).toEqual({
+      type: 'share',
+      share: false,
+    });
+    expect(parseLiveClientMessage(JSON.stringify({ type: 'share', share: true }))).toEqual({
+      type: 'share',
+      share: true,
+    });
+  });
+
+  it('refuses to guess which way an unclear share was meant', () => {
+    // Consent is the one field truthiness must never decide: a dropped frame
+    // leaves the switch where it was, which is safe whichever way it points.
+    for (const bad of [
+      { type: 'share', share: 'false' },
+      { type: 'share', share: 0 },
+      { type: 'share', share: 1 },
+      { type: 'share', share: null },
+      { type: 'share' },
+    ]) {
+      expect(parseLiveClientMessage(JSON.stringify(bad))).toBeNull();
+    }
+  });
+
+  it('strips fields a share frame does not promise', () => {
+    expect(
+      parseLiveClientMessage(JSON.stringify({ type: 'share', share: true, position: FIX, extra: 'smuggled' })),
+    ).toEqual({ type: 'share', share: true });
+  });
+
   it('parses zone removes and holds their ids to the shared rule', () => {
     expect(parseLiveClientMessage(JSON.stringify({ type: 'zone-remove', id: 'z-1' }))).toEqual({
       type: 'zone-remove',
@@ -256,6 +295,62 @@ describe('parseLiveClientMessage: v2 messages', () => {
     });
     expect(parseLiveClientMessage(JSON.stringify({ type: 'zone-remove', id: 'z 1' }))).toBeNull();
     expect(parseLiveClientMessage(JSON.stringify({ type: 'zone-remove' }))).toBeNull();
+  });
+});
+
+describe('sharing is a switch, not a fate (0.2.4)', () => {
+  it('carries the share message in the client union, not beside it', () => {
+    // Compile-time proof the message is TYPED — the whole point of 0.2.4.
+    // Before it, the api read this shape off the raw frame outside the
+    // protocol; two spellings of one field is what this deletes.
+    const message: LiveClientMessage = { type: 'share', share: false };
+    expect(parseLiveClientMessage(JSON.stringify(message))).toEqual(message);
+  });
+
+  it('types the three states that look alike and mean different things', () => {
+    const base = {
+      id: 'p-1',
+      owner: false,
+      joinedAt: '2026-08-24T12:00:00.000Z',
+      updatedAt: '2026-08-24T12:05:00.000Z',
+    } as const;
+
+    // Present, not sharing: roster entry kept, position and trail gone.
+    const dark: LiveParticipant = { ...base, lastSeenAt: '2026-08-24T12:05:00.000Z', sharing: false };
+    // Sharing, no fix yet — the state `sharing` exists to tell from the one
+    // above. A pin to WAIT for, never one to draw.
+    const waiting: LiveParticipant = { ...base, lastSeenAt: '2026-08-24T12:05:00.000Z', sharing: true };
+    // Disconnected: position RETAINED, stamped. Orthogonal to the switch —
+    // intent versus wire — so it keeps whatever the switch last said.
+    const ghost: LiveParticipant = {
+      ...base,
+      lastSeenAt: '2026-08-24T12:04:00.000Z',
+      position: { lat: 51.5, lon: -0.1, accuracyM: 8 },
+      sharing: true,
+      disconnectedAt: '2026-08-24T12:05:00.000Z',
+    };
+
+    expect(dark.position).toBeUndefined();
+    expect(waiting.position).toBeUndefined();
+    expect(dark.sharing).toBe(false);
+    expect(waiting.sharing).toBe(true);
+    expect(ghost.position).toBeDefined();
+    expect(ghost.disconnectedAt).toBeDefined();
+  });
+
+  it('leaves `sharing` optional — absent is "not reported", not "false"', () => {
+    // A pre-0.2.4 server sends no such field, and a participant without one
+    // must still be a legal participant. Reading absence AS false is the
+    // misreading the doc forbids; `in` is how a client tells them apart.
+    const legacy: LiveParticipant = {
+      id: 'p-2',
+      owner: true,
+      joinedAt: '2026-08-24T12:00:00.000Z',
+      lastSeenAt: '2026-08-24T12:00:00.000Z',
+      updatedAt: '2026-08-24T12:00:00.000Z',
+    };
+    expect('sharing' in legacy).toBe(false);
+    expect(legacy.sharing).toBeUndefined();
   });
 });
 

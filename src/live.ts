@@ -95,6 +95,25 @@ export interface LiveParticipant {
   avatar?: string;
   /** Present only for participants who chose to share their position. */
   position?: Position;
+  /**
+   * The sharing switch as the server last knew it — see the `share` client
+   * message. OPTIONAL AND ADVISORY, new in 0.2.4: absent means the server
+   * does not report it (any pre-0.2.4 server), NOT `false`.
+   *
+   * It exists to separate two states `position` alone conflates: `sharing:
+   * true` with no `position` is "sharing, no fix yet — one is coming";
+   * `sharing: false` is "chose not to broadcast — none is coming". A client
+   * without it reads both as not-sharing, which is honest but coarse.
+   *
+   * `position` REMAINS AUTHORITATIVE for whether there is a fix. This field
+   * is never a licence to render a stale pin — a participant who turns
+   * sharing off loses `position` and `trail` outright, and `sharing: true`
+   * on an entry with no position means a pin to wait for, never one to draw.
+   * It is orthogonal to `disconnectedAt`: the switch describes intent, the
+   * stamp describes the wire, and a disconnected member keeps whatever the
+   * switch last said.
+   */
+  sharing?: boolean;
   /** Encoded sketch payload (see `sketch.ts`). Opaque here, as everywhere. */
   sketch?: string;
   /**
@@ -235,6 +254,18 @@ export type LiveClientMessage =
    */
   | { type: 'hello'; code: string; name?: string; updateToken?: string; share: boolean; avatar?: string }
   | { type: 'position'; position: Position }
+  /**
+   * FLIP THE SHARING SWITCH mid-connection, in either direction. The hello's
+   * `share` sets its opening value only; broadcasting your position is a
+   * choice anyone — the owner included — may change at any time, and never a
+   * fate sealed at join.
+   *
+   * Clearing it REMOVES `position` and `trail` from the participant while
+   * keeping their roster entry: present-but-not-sharing, the shape a watcher
+   * has always had. See the semantics under LiveParticipant.sharing and, in
+   * full, docs/specs/live-v2-contract.md.
+   */
+  | { type: 'share'; share: boolean }
   /**
    * LEGACY single-marker form: place one marker (or with null, clear all of
    * this participant's markers). Kept for old clients; treated as a
@@ -426,6 +457,16 @@ export function parseLiveClientMessage(raw: string): LiveClientMessage | null {
       ...(updateToken !== undefined ? { updateToken } : {}),
       ...(avatar !== undefined ? { avatar } : {}),
     };
+  }
+
+  if (message['type'] === 'share') {
+    // A strict boolean, not a truthiness test: `share: "false"` and
+    // `share: 0` are a client bug, and guessing which way someone meant
+    // their consent to go is the one guess this must never make. Malformed
+    // means null, which means the frame is dropped — the switch stays where
+    // it was, which is the safe direction whichever way it was pointing.
+    if (typeof message['share'] !== 'boolean') return null;
+    return { type: 'share', share: message['share'] };
   }
 
   if (message['type'] === 'position' || message['type'] === 'marker') {

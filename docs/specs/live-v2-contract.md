@@ -37,6 +37,7 @@ with `parseLiveClientMessage` — null means drop the frame, nothing else.
 |---|---|---|
 | `hello` | `{type, code, share, name?, updateToken?, avatar?}` | First frame on every connection. `avatar` is new in v2 — see the avatar rule below. |
 | `position` | `{type, position}` | A live fix. |
+| `share` | `{type, share: boolean}` | **0.2.4.** Flip the sharing switch mid-connection — see the sharing rule below. Strict boolean; anything else is malformed and the frame is dropped. |
 | `marker` | `{type, position \| null, icon?}` | **Legacy** single-marker form — see back-compat rule. |
 | `markers` | `{type, markers: SessionMarker[]}` | Replace this participant's whole marker list. `[]` clears. ≤ 20 entries. |
 | `sketch` | `{type, sketch}` | Unchanged from v1. |
@@ -78,7 +79,70 @@ LiveEvent     = { kind, participantId, name?, zoneId?,     // name/targetName st
 `lastSeenAt` refreshed on every frame received), `avatar?`, `markers?`, and
 `trail?` (welcome roster only: last 20 fixes, oldest first; a fix without
 `takenAt` is stamped with receipt time). 0.2.3 adds `disconnectedAt?` (ISO,
-server clock; **absent means connected**) — see the disconnection rule.
+server clock; **absent means connected**) — see the disconnection rule. 0.2.4
+adds `sharing?` (boolean, **absent means not reported, NOT `false`**) — see
+the sharing rule.
+
+---
+
+## Sharing is a switch, not a fate (0.2.4)
+
+The hello's `share` sets the switch's **opening value only**. Broadcasting
+your position is a choice anyone may change at any time — **the session owner
+included**, who may run a share while broadcasting nothing — and the `share`
+client message is how they change it.
+
+This documents behaviour the **api already implements**; 0.2.4 only gives the
+message a type. Before it, the api read `{"type":"share","share":<bool>}`
+straight off the raw frame beside `parseLiveClientMessage`
+(`parseShareFrame()`), the same seam `extractAvatar()` once occupied. That
+re-parse is **deleted** as of this release — there must never be two spellings
+of one field alive at once.
+
+**Clearing the switch removes `position` and `trail` from the participant and
+keeps the roster entry.** That is *present-but-not-sharing* — exactly the
+shape a watcher (`hello` with `share: false`) has always had. Fixes arriving
+from a member whose switch is off are **dropped**, not honoured: not fanned
+out, not trailed, not fed to detection, and — for the owner — not written
+through to the session record either.
+
+Three states that look alike from a distance and mean different things:
+
+| state | `position` | `disconnectedAt` | `lastSeenAt` | means |
+|---|---|---|---|---|
+| **present, not sharing** | **absent** | absent | fresh | chose to stop. No fix is coming until they choose otherwise. |
+| **disconnected** | **retained** | **present** | when last heard | their socket dropped. Ghost them at their last position — see the disconnection rule. |
+| **connected but quiet** | **retained** | absent | **stale** | still on the wire, just not sending (phone locked, no fix). |
+
+Turning it back on:
+
+- The participant re-appears with no position until their **next fix** — the
+  server never resurrects the one it dropped.
+- **Zone occupancy re-baselines silently.** The first fixes back establish
+  where they are the same way a fresh join does; a walk taken while dark
+  fires **no** `entered` and **no** `left`.
+- **`reached` suppression survives** the whole round trip: "at most once per
+  participant per marker id" means ever, and going dark is not a way to
+  re-fire it.
+- The **trail does not come back** — it was cleared when they went dark, so a
+  late joiner never receives the path of someone who stopped sharing it.
+
+**What the session record cannot say.** Going dark stops the owner's
+write-through; it does not rewrite history. The record keeps the owner's
+**last honoured fix**, so a plain resolve still returns it. The record has no
+"not sharing" field — that state exists only on the live wire.
+
+**`LiveParticipant.sharing?`** (optional, advisory) reports the switch, so a
+client can tell *"sharing, no fix yet"* (`sharing: true`, no `position`) from
+*"chose not to broadcast"* (`sharing: false`). **Absent means the server does
+not report it** — a pre-0.2.4 server — and clients must then fall back to
+today's coarse reading (no position, no claim about why). `position` presence
+stays **authoritative** for whether there is a fix: `sharing: true` is a pin
+to wait for, never one to draw, and never grounds to keep a stale one on the
+map. It is orthogonal to `disconnectedAt` — intent versus wire — and a
+disconnected member keeps whatever the switch last said. **Honouring it is
+optional**: the api may set it; a client may ignore it until it has a reason
+not to.
 
 ---
 
@@ -122,10 +186,11 @@ events refer to zones and markers by id alone.
 `MAX_AVATAR_CHARS` (10,240). Anything unusable is **dropped silently, never a
 reason to refuse the join** — it is decoration, and the one hello field that
 arrives from storage rather than the user's fingers.
-*Seam to delete:* the api currently re-parses the raw hello frame for `avatar`
+*Seam, closed:* the api used to re-parse the raw hello frame for `avatar`
 outside the protocol types (`extractAvatar()` in `api/src/live-route.ts`).
-Now that `hello.avatar` is typed and validated by `parseLiveClientMessage`,
-that re-parse must be deleted, not kept alongside.
+`hello.avatar` is typed and validated by `parseLiveClientMessage`, and that
+re-parse is gone. The `share` seam that followed it is gone the same way —
+see the sharing rule.
 
 ### Caps (exported constants — never restate the numbers)
 
